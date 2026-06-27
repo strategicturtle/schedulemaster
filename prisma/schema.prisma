@@ -10,15 +10,5 @@ datasource db {
   provider = "postgresql"
 }
 
-model Event {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  location    String?
-  startTime   DateTime
-  endTime     DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([startTime])
-}
+// Real models (Schedule, Folder, Comment, Survey, …) will be added here as
+// the app is built out. The mock Event model was removed.
