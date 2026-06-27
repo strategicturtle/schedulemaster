@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { createEvent, deleteEvent } from "./actions";
 import { Event } from "@/generated/prisma/client";
 
+// Reads from the database on every request, so it must not be statically
+// prerendered at build time (when the DB is unreachable from the builder).
+export const dynamic = "force-dynamic";
+
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
   month: "short",
