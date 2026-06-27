@@ -1,4 +1,5 @@
-// ScheduleMaster — deterministic schedule generator ("SM generating").
+// ScheduleManager — the AI that generates schedules for the ScheduleMaster app.
+// Deterministic rules-engine implementation of "SM generating".
 // Takes the survey answers and builds a Mon–Sun week of time blocks.
 
 export type Busyness = "middle" | "packed" | "loose";
