@@ -8,11 +8,13 @@ type Busyness = "middle" | "packed" | "loose";
 // blanks for that question's template.
 type Entry = Record<string, string>;
 
-type BlankWidth = "time" | "day" | "wide";
+type BlankWidth = "day" | "wide";
 
 type Segment =
   | { type: "text"; text: string }
-  | { type: "blank"; field: string; placeholder: string; width: BlankWidth };
+  | { type: "blank"; field: string; placeholder: string; width: BlankWidth }
+  // A time slot renders as  [hour] : [min]  — the colon is provided.
+  | { type: "time"; hourField: string; minField: string };
 
 type BlankStep = {
   key: "fixedTime" | "flexible" | "wants";
@@ -22,12 +24,17 @@ type BlankStep = {
   note: string | null;
 };
 
-const t = (text: string): Segment => ({ type: "text", text });
+const txt = (text: string): Segment => ({ type: "text", text });
 const blank = (
   field: string,
   placeholder: string,
   width: BlankWidth,
 ): Segment => ({ type: "blank", field, placeholder, width });
+const time = (hourField: string, minField: string): Segment => ({
+  type: "time",
+  hourField,
+  minField,
+});
 
 const BLANK_STEPS: BlankStep[] = [
   {
@@ -36,14 +43,14 @@ const BLANK_STEPS: BlankStep[] = [
     // ____ from _:__ to _:__ on ____
     segments: [
       blank("program", "what", "wide"),
-      t("from"),
-      blank("start", "_:__", "time"),
-      t("to"),
-      blank("end", "_:__", "time"),
-      t("on"),
+      txt("from"),
+      time("startH", "startM"),
+      txt("to"),
+      time("endH", "endM"),
+      txt("on"),
       blank("day", "day", "day"),
     ],
-    fields: ["program", "start", "end", "day"],
+    fields: ["program", "startH", "startM", "endH", "endM", "day"],
     note: null,
   },
   {
@@ -51,22 +58,22 @@ const BLANK_STEPS: BlankStep[] = [
     title: "Any programs without a fixed time?",
     // _:__ to _:__ called ____ on ____
     segments: [
-      blank("start", "_:__", "time"),
-      t("to"),
-      blank("end", "_:__", "time"),
-      t("called"),
+      time("startH", "startM"),
+      txt("to"),
+      time("endH", "endM"),
+      txt("called"),
       blank("name", "what", "wide"),
-      t("on"),
+      txt("on"),
       blank("day", "day", "day"),
     ],
-    fields: ["start", "end", "name", "day"],
+    fields: ["startH", "startM", "endH", "endM", "name", "day"],
     note: "ScheduleMaster will choose the time and duration based on your productivity.",
   },
   {
     key: "wants",
     title: "Any wants?",
     // It is ______
-    segments: [t("It is"), blank("want", "what", "wide")],
+    segments: [txt("It is"), blank("want", "what", "wide")],
     fields: ["want"],
     note: "ScheduleMaster decides the duration, the time, and whether to do it at all (or only on weekends).",
   },
@@ -293,8 +300,10 @@ export function SurveyWizard() {
   );
 }
 
+const BLANK_INPUT =
+  "border-0 border-b-2 border-zinc-300 bg-transparent px-1 py-0.5 text-center text-zinc-900 outline-none transition-colors placeholder:text-zinc-300 focus:border-zinc-900 dark:border-zinc-600 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-white";
+
 const WIDTH_CLASS: Record<BlankWidth, string> = {
-  time: "w-16",
   day: "w-24",
   wide: "w-36 sm:w-44",
 };
@@ -314,7 +323,14 @@ function BlankRow({
   onChange: (field: string, value: string) => void;
   onRemove: () => void;
 }) {
-  let firstBlankSeen = false;
+  // Track the first input across the whole row so it can be auto-focused.
+  let firstInputSeen = false;
+  const takeFirst = () => {
+    if (firstInputSeen) return false;
+    firstInputSeen = true;
+    return true;
+  };
+
   return (
     <div className="flex items-center gap-2">
       <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-2 text-base leading-loose">
@@ -326,8 +342,32 @@ function BlankRow({
               </span>
             );
           }
-          const isFirst = !firstBlankSeen;
-          firstBlankSeen = true;
+          if (seg.type === "time") {
+            return (
+              <span key={i} className="inline-flex items-baseline">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={entry[seg.hourField] ?? ""}
+                  onChange={(e) => onChange(seg.hourField, e.target.value)}
+                  placeholder="_"
+                  autoFocus={autoFocus && takeFirst()}
+                  aria-label={seg.hourField}
+                  className={`w-7 ${BLANK_INPUT}`}
+                />
+                <span className="px-0.5 text-zinc-600 dark:text-zinc-300">:</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={entry[seg.minField] ?? ""}
+                  onChange={(e) => onChange(seg.minField, e.target.value)}
+                  placeholder="__"
+                  aria-label={seg.minField}
+                  className={`w-9 ${BLANK_INPUT}`}
+                />
+              </span>
+            );
+          }
           return (
             <input
               key={i}
@@ -335,9 +375,9 @@ function BlankRow({
               value={entry[seg.field] ?? ""}
               onChange={(e) => onChange(seg.field, e.target.value)}
               placeholder={seg.placeholder}
-              autoFocus={autoFocus && isFirst}
+              autoFocus={autoFocus && takeFirst()}
               aria-label={seg.field}
-              className={`${WIDTH_CLASS[seg.width]} border-0 border-b-2 border-zinc-300 bg-transparent px-1 py-0.5 text-center text-zinc-900 outline-none transition-colors placeholder:text-zinc-300 focus:border-zinc-900 dark:border-zinc-600 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-white`}
+              className={`${WIDTH_CLASS[seg.width]} ${BLANK_INPUT}`}
             />
           );
         })}
@@ -358,11 +398,15 @@ function BlankRow({
 
 function entryToLine(stepDef: BlankStep, entry: Entry): string {
   return stepDef.segments
-    .map((seg) =>
-      seg.type === "text"
-        ? seg.text
-        : (entry[seg.field] || "").trim() || seg.placeholder,
-    )
+    .map((seg) => {
+      if (seg.type === "text") return seg.text;
+      if (seg.type === "time") {
+        const h = (entry[seg.hourField] || "").trim() || "_";
+        const m = (entry[seg.minField] || "").trim() || "__";
+        return `${h}:${m}`;
+      }
+      return (entry[seg.field] || "").trim() || seg.placeholder;
+    })
     .join(" ");
 }
 
