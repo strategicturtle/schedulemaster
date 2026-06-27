@@ -104,17 +104,56 @@ const WANT_DURATION: Record<Busyness, number> = {
   loose: 30,
 };
 
-// Weekend-leaning priority: SM fills these days in order up to the chosen count.
-const DAY_PRIORITY = [5, 6, 2, 4, 0, 3, 1]; // Sat, Sun, Wed, Fri, Mon, Thu, Tue
+const BUSYNESS_FACTOR: Record<Busyness, number> = {
+  loose: 0.5,
+  middle: 1,
+  packed: 1.5,
+};
 
-/**
- * SM decides how many days a week to schedule a want. Scales with busyness and
- * varies per want; 0 means SM decided not to schedule it at all.
- */
-function wantDayCount(busyness: Busyness, i: number): number {
-  if (busyness === "packed") return Math.min(7, 5 + (i % 3)); // 5–7 days
-  if (busyness === "middle") return 2 + (i % 3); // 2–4 days
-  return i % 2 === 0 ? 2 : 0; // loose: weekends, or not at all
+// Productive wants lean toward weekdays; leisure wants lean toward weekends.
+const WEEKDAY_PRIORITY = [0, 2, 4, 1, 3, 5, 6]; // Mon, Wed, Fri, Tue, Thu, Sat, Sun
+const WEEKEND_PRIORITY = [5, 6, 2, 4, 0, 3, 1]; // Sat, Sun, Wed, Fri, Mon, Thu, Tue
+
+const PRODUCTIVE_WORDS = [
+  "study", "studying", "read", "reading", "homework", "practice", "learn",
+  "learning", "code", "coding", "program", "write", "writing", "chore",
+  "chores", "clean", "organize", "draw", "drawing", "paint", "music", "piano",
+  "guitar", "violin", "instrument", "language", "math", "science", "project",
+  "review", "journal", "build", "work",
+];
+
+const HEALTHY_WORDS = [
+  "run", "running", "jog", "exercise", "workout", "gym", "walk", "walking",
+  "sport", "sports", "soccer", "basketball", "baseball", "tennis", "swim",
+  "swimming", "bike", "biking", "cycle", "yoga", "meditate", "meditation",
+  "stretch", "sleep", "nap", "rest", "cook", "cooking", "salad", "water",
+  "outside", "hike", "hiking", "dance", "fresh air",
+];
+
+const UNHEALTHY_WORDS = [
+  "game", "gaming", "games", "videogame", "video game", "tv", "television",
+  "youtube", "netflix", "scroll", "scrolling", "social media", "tiktok",
+  "candy", "junk", "soda", "snack",
+];
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+/** Score a want for productiveness and healthiness (each 0–1) from keywords. */
+export function scoreWant(title: string): {
+  productivity: number;
+  health: number;
+} {
+  const s = title.toLowerCase();
+  const has = (list: string[]) => list.some((k) => s.includes(k));
+  let productivity = 0.4;
+  let health = 0.4;
+  if (has(PRODUCTIVE_WORDS)) productivity += 0.4;
+  if (has(HEALTHY_WORDS)) health += 0.4;
+  if (has(UNHEALTHY_WORDS)) {
+    productivity -= 0.25;
+    health -= 0.25;
+  }
+  return { productivity: clamp01(productivity), health: clamp01(health) };
 }
 
 export function generateWeek(answers: SurveyAnswers): Week {
@@ -168,17 +207,29 @@ export function generateWeek(answers: SurveyAnswers): Week {
     }
   }
 
-  // 3) Wants — SM decides the number of days, whether to do it at all, the
-  // duration, and the time, driven by busyness.
+  // 3) Wants — SM rates each want for productiveness + healthiness and uses
+  // that (with busyness) to decide the number of days, whether to do it at
+  // all, the time, and which days.
   const wantDuration = WANT_DURATION[busyness];
-  answers.wants.forEach((entry, i) => {
+  for (const entry of answers.wants) {
     const title = (entry.want || "").trim();
-    if (!title) return;
-    const count = wantDayCount(busyness, i);
-    if (count <= 0) return; // SM decided: not at all
-    const wantDays = DAY_PRIORITY.slice(0, count).sort((a, b) => a - b);
-    for (const d of wantDays) {
-      const slot = findSlot(week[d], wantDuration, win, 15 * 60); // prefer afternoon
+    if (!title) continue;
+
+    const { productivity, health } = scoreWant(title);
+    const value = (productivity + health) / 2; // 0–1 overall worth
+    const count = Math.max(
+      0,
+      Math.min(7, Math.round(value * 7 * BUSYNESS_FACTOR[busyness])),
+    );
+    if (count === 0) continue; // SM decided it's not worth scheduling
+
+    // Productive wants lean to weekdays + productive morning hours; leisure
+    // wants lean to weekends + the afternoon.
+    const priority = productivity >= 0.6 ? WEEKDAY_PRIORITY : WEEKEND_PRIORITY;
+    const from = productivity >= 0.5 ? 9 * 60 : 15 * 60;
+    const days = priority.slice(0, count).sort((a, b) => a - b);
+    for (const d of days) {
+      const slot = findSlot(week[d], wantDuration, win, from);
       if (slot)
         week[d].push({
           title,
@@ -187,7 +238,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
           kind: "want",
         });
     }
-  });
+  }
 
   // Sort each day's blocks chronologically.
   for (const day of week) day.sort((a, b) => a.startMin - b.startMin);

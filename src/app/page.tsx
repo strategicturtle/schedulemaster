@@ -1,5 +1,5 @@
-import { SurveyWizard } from "@/components/SurveyWizard";
+import { App } from "@/components/App";
 
 export default function Home() {
-  return <SurveyWizard />;
+  return <App />;
 }

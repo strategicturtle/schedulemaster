@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { generateWeek } from "@/lib/schedule";
-import { ScheduleGrid } from "@/components/ScheduleGrid";
 
 type Busyness = "middle" | "packed" | "loose";
 
@@ -89,7 +87,7 @@ const BUSYNESS_OPTIONS: { value: Busyness; label: string; desc: string }[] = [
 
 const TOTAL_STEPS = 4; // Q1–Q3 (blanks) + Q4 (busyness)
 
-type Answers = {
+export type Answers = {
   fixedTime: Entry[];
   flexible: Entry[];
   wants: Entry[];
@@ -109,10 +107,19 @@ function initAnswers(): Answers {
   };
 }
 
-export function SurveyWizard() {
+export function SurveyWizard({
+  initialAnswers,
+  onComplete,
+  onCancel,
+}: {
+  initialAnswers?: Answers;
+  onComplete: (answers: Answers) => void;
+  onCancel: () => void;
+}) {
   const [step, setStep] = useState(0); // 0–2 = blank questions, 3 = busyness
-  const [submitted, setSubmitted] = useState(false);
-  const [answers, setAnswers] = useState<Answers>(initAnswers);
+  const [answers, setAnswers] = useState<Answers>(
+    () => initialAnswers ?? initAnswers(),
+  );
 
   const goNext = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
@@ -143,26 +150,6 @@ export function SurveyWizard() {
       ...a,
       [key]: a[key].filter((_, i) => i !== index),
     }));
-  }
-
-  function restart() {
-    setAnswers(initAnswers());
-    setStep(0);
-    setSubmitted(false);
-  }
-
-  if (submitted) {
-    const week = generateWeek(answers);
-    return (
-      <ScheduleGrid
-        week={week}
-        onBack={restart}
-        onEdit={() => {
-          setSubmitted(false);
-          setStep(0);
-        }}
-      />
-    );
   }
 
   const isBusynessStep = step === TOTAL_STEPS - 1;
@@ -273,17 +260,16 @@ export function SurveyWizard() {
       <div className="flex items-center justify-between gap-3 pt-2">
         <button
           type="button"
-          onClick={goBack}
-          disabled={step === 0}
-          className="h-11 rounded-lg px-4 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-0 dark:hover:text-white"
+          onClick={step === 0 ? onCancel : goBack}
+          className="h-11 rounded-lg px-4 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-white"
         >
-          Back
+          {step === 0 ? "Cancel" : "Back"}
         </button>
 
         {isBusynessStep ? (
           <button
             type="button"
-            onClick={() => setSubmitted(true)}
+            onClick={() => onComplete(answers)}
             disabled={answers.busyness === null}
             className="h-11 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
