@@ -98,17 +98,24 @@ function findSlot(
   return tryFrom(Math.max(win.start, from)) ?? tryFrom(win.start);
 }
 
-const WANT_DAYS: Record<Busyness, number[]> = {
-  packed: [0, 1, 2, 3, 4, 5, 6],
-  middle: [2, 5, 6], // midweek + weekend
-  loose: [5, 6], // weekends only
-};
-
 const WANT_DURATION: Record<Busyness, number> = {
   packed: 60,
   middle: 45,
   loose: 30,
 };
+
+// Weekend-leaning priority: SM fills these days in order up to the chosen count.
+const DAY_PRIORITY = [5, 6, 2, 4, 0, 3, 1]; // Sat, Sun, Wed, Fri, Mon, Thu, Tue
+
+/**
+ * SM decides how many days a week to schedule a want. Scales with busyness and
+ * varies per want; 0 means SM decided not to schedule it at all.
+ */
+function wantDayCount(busyness: Busyness, i: number): number {
+  if (busyness === "packed") return Math.min(7, 5 + (i % 3)); // 5–7 days
+  if (busyness === "middle") return 2 + (i % 3); // 2–4 days
+  return i % 2 === 0 ? 2 : 0; // loose: weekends, or not at all
+}
 
 export function generateWeek(answers: SurveyAnswers): Week {
   const busyness: Busyness = answers.busyness ?? "middle";
@@ -161,14 +168,15 @@ export function generateWeek(answers: SurveyAnswers): Week {
     }
   }
 
-  // 3) Wants — SM decides whether/when, driven by busyness.
-  const wantDays = WANT_DAYS[busyness];
+  // 3) Wants — SM decides the number of days, whether to do it at all, the
+  // duration, and the time, driven by busyness.
   const wantDuration = WANT_DURATION[busyness];
   answers.wants.forEach((entry, i) => {
     const title = (entry.want || "").trim();
     if (!title) return;
-    // On "loose" days, SM may decide some wants aren't worth scheduling.
-    if (busyness === "loose" && i % 2 === 1) return;
+    const count = wantDayCount(busyness, i);
+    if (count <= 0) return; // SM decided: not at all
+    const wantDays = DAY_PRIORITY.slice(0, count).sort((a, b) => a - b);
     for (const d of wantDays) {
       const slot = findSlot(week[d], wantDuration, win, 15 * 60); // prefer afternoon
       if (slot)

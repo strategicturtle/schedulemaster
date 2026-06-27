@@ -77,7 +77,7 @@ const BLANK_STEPS: BlankStep[] = [
     // It is ______
     segments: [txt("It is"), blank("want", "what", "wide")],
     fields: ["want"],
-    note: "ScheduleManager decides the duration, the time, and whether to do it at all (or only on weekends).",
+    note: "ScheduleManager decides how many days a week, the duration, the time, and whether to do it at all (or only on weekends).",
   },
 ];
 
