@@ -1,44 +1,73 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 type Busyness = "middle" | "packed" | "loose";
 
-type Answers = {
-  fixedTime: string;
-  flexible: string;
-  wants: string;
-  busyness: Busyness | null;
-};
+// Each blank-question is a list of entries; each entry is a record of the
+// blanks for that question's template.
+type Entry = Record<string, string>;
 
-type TextStep = {
+type BlankWidth = "time" | "day" | "wide";
+
+type Segment =
+  | { type: "text"; text: string }
+  | { type: "blank"; field: string; placeholder: string; width: BlankWidth };
+
+type BlankStep = {
   key: "fixedTime" | "flexible" | "wants";
   title: string;
-  format: string;
-  placeholder: string;
+  segments: Segment[];
+  fields: string[];
   note: string | null;
 };
 
-const TEXT_STEPS: TextStep[] = [
+const t = (text: string): Segment => ({ type: "text", text });
+const blank = (
+  field: string,
+  placeholder: string,
+  width: BlankWidth,
+): Segment => ({ type: "blank", field, placeholder, width });
+
+const BLANK_STEPS: BlankStep[] = [
   {
     key: "fixedTime",
     title: "Any fixed-time programs?",
-    format: "____ from _:__ to _:__ on ____",
-    placeholder: "Soccer practice from 4:00 to 5:30 on Tuesday",
+    // ____ from _:__ to _:__ on ____
+    segments: [
+      blank("program", "what", "wide"),
+      t("from"),
+      blank("start", "_:__", "time"),
+      t("to"),
+      blank("end", "_:__", "time"),
+      t("on"),
+      blank("day", "day", "day"),
+    ],
+    fields: ["program", "start", "end", "day"],
     note: null,
   },
   {
     key: "flexible",
     title: "Any programs without a fixed time?",
-    format: "_:__ to _:__ called ____ on ____",
-    placeholder: "1:00 to 2:00 called Homework on Monday",
+    // _:__ to _:__ called ____ on ____
+    segments: [
+      blank("start", "_:__", "time"),
+      t("to"),
+      blank("end", "_:__", "time"),
+      t("called"),
+      blank("name", "what", "wide"),
+      t("on"),
+      blank("day", "day", "day"),
+    ],
+    fields: ["start", "end", "name", "day"],
     note: "ScheduleMaster will choose the time and duration based on your productivity.",
   },
   {
     key: "wants",
     title: "Any wants?",
-    format: "It is ______",
-    placeholder: "It is reading for fun",
+    // It is ______
+    segments: [t("It is"), blank("want", "what", "wide")],
+    fields: ["want"],
     note: "ScheduleMaster decides the duration, the time, and whether to do it at all (or only on weekends).",
   },
 ];
@@ -49,32 +78,66 @@ const BUSYNESS_OPTIONS: { value: Busyness; label: string; desc: string }[] = [
   { value: "loose", label: "Loose", desc: "Plenty of breathing room." },
 ];
 
-const TOTAL_STEPS = 4; // Q1–Q3 (text) + Q4 (busyness)
+const TOTAL_STEPS = 4; // Q1–Q3 (blanks) + Q4 (busyness)
+
+type Answers = {
+  fixedTime: Entry[];
+  flexible: Entry[];
+  wants: Entry[];
+  busyness: Busyness | null;
+};
+
+function emptyEntry(fields: string[]): Entry {
+  return Object.fromEntries(fields.map((f) => [f, ""]));
+}
+
+function initAnswers(): Answers {
+  return {
+    fixedTime: [emptyEntry(BLANK_STEPS[0].fields)],
+    flexible: [emptyEntry(BLANK_STEPS[1].fields)],
+    wants: [emptyEntry(BLANK_STEPS[2].fields)],
+    busyness: null,
+  };
+}
 
 export function SurveyWizard() {
-  const [step, setStep] = useState(0); // 0–2 = text questions, 3 = busyness
+  const [step, setStep] = useState(0); // 0–2 = blank questions, 3 = busyness
   const [submitted, setSubmitted] = useState(false);
-  const [answers, setAnswers] = useState<Answers>({
-    fixedTime: "",
-    flexible: "",
-    wants: "",
-    busyness: null,
-  });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [answers, setAnswers] = useState<Answers>(initAnswers);
 
   const goNext = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
-  function handleTextKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Shift+Enter inserts a newline; plain Enter advances to the next question.
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      goNext();
-    }
+  function updateEntry(
+    key: BlankStep["key"],
+    index: number,
+    field: string,
+    value: string,
+  ) {
+    setAnswers((a) => {
+      const list = a[key].map((entry, i) =>
+        i === index ? { ...entry, [field]: value } : entry,
+      );
+      return { ...a, [key]: list };
+    });
+  }
+
+  function addEntry(stepDef: BlankStep) {
+    setAnswers((a) => ({
+      ...a,
+      [stepDef.key]: [...a[stepDef.key], emptyEntry(stepDef.fields)],
+    }));
+  }
+
+  function removeEntry(key: BlankStep["key"], index: number) {
+    setAnswers((a) => ({
+      ...a,
+      [key]: a[key].filter((_, i) => i !== index),
+    }));
   }
 
   function restart() {
-    setAnswers({ fixedTime: "", flexible: "", wants: "", busyness: null });
+    setAnswers(initAnswers());
     setStep(0);
     setSubmitted(false);
   }
@@ -93,11 +156,10 @@ export function SurveyWizard() {
   }
 
   const isBusynessStep = step === TOTAL_STEPS - 1;
-  const textStep = !isBusynessStep ? TEXT_STEPS[step] : null;
+  const stepDef = !isBusynessStep ? BLANK_STEPS[step] : null;
 
   return (
     <Shell>
-      {/* Progress */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
           Question {step + 1} of {TOTAL_STEPS}
@@ -116,40 +178,44 @@ export function SurveyWizard() {
         </div>
       </div>
 
-      {textStep && (
+      {stepDef && (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              {textStep.title}
-            </h2>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Format: <span className="font-mono">{textStep.format}</span>
-            </p>
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            {stepDef.title}
+          </h2>
+
+          <div className="flex flex-col gap-3">
+            {answers[stepDef.key].map((entry, i) => (
+              <BlankRow
+                key={i}
+                stepDef={stepDef}
+                entry={entry}
+                autoFocus={i === 0}
+                removable={answers[stepDef.key].length > 1}
+                onChange={(field, value) =>
+                  updateEntry(stepDef.key, i, field, value)
+                }
+                onRemove={() => removeEntry(stepDef.key, i)}
+              />
+            ))}
           </div>
 
-          <textarea
-            ref={textareaRef}
-            value={answers[textStep.key]}
-            onChange={(e) =>
-              setAnswers((a) => ({ ...a, [textStep.key]: e.target.value }))
-            }
-            onKeyDown={handleTextKeyDown}
-            placeholder={textStep.placeholder}
-            rows={5}
-            autoFocus
-            className="w-full resize-y rounded-xl border border-black/[.1] bg-white px-4 py-3 text-base leading-relaxed outline-none focus:border-zinc-400 dark:border-white/[.15] dark:bg-zinc-900"
-          />
+          <button
+            type="button"
+            onClick={() => addEntry(stepDef)}
+            className="self-start text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-white"
+          >
+            + Add another
+          </button>
 
           <p className="text-xs text-zinc-400">
-            Add one per line — <kbd className="font-sans">Shift</kbd>+
-            <kbd className="font-sans">Enter</kbd> for a new line,{" "}
-            <kbd className="font-sans">Enter</kbd> or Next to continue. Leave
-            blank if none.
+            Fill in the blanks — <kbd className="font-sans">Tab</kbd> jumps to
+            the next blank, or click a blank to type. Leave blank if none.
           </p>
 
-          {textStep.note && (
+          {stepDef.note && (
             <p className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
-              {textStep.note}
+              {stepDef.note}
             </p>
           )}
         </div>
@@ -194,7 +260,6 @@ export function SurveyWizard() {
         </div>
       )}
 
-      {/* Navigation */}
       <div className="flex items-center justify-between gap-3 pt-2">
         <button
           type="button"
@@ -228,6 +293,83 @@ export function SurveyWizard() {
   );
 }
 
+const WIDTH_CLASS: Record<BlankWidth, string> = {
+  time: "w-16",
+  day: "w-24",
+  wide: "w-36 sm:w-44",
+};
+
+function BlankRow({
+  stepDef,
+  entry,
+  autoFocus,
+  removable,
+  onChange,
+  onRemove,
+}: {
+  stepDef: BlankStep;
+  entry: Entry;
+  autoFocus: boolean;
+  removable: boolean;
+  onChange: (field: string, value: string) => void;
+  onRemove: () => void;
+}) {
+  let firstBlankSeen = false;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-2 text-base leading-loose">
+        {stepDef.segments.map((seg, i) => {
+          if (seg.type === "text") {
+            return (
+              <span key={i} className="text-zinc-600 dark:text-zinc-300">
+                {seg.text}
+              </span>
+            );
+          }
+          const isFirst = !firstBlankSeen;
+          firstBlankSeen = true;
+          return (
+            <input
+              key={i}
+              type="text"
+              value={entry[seg.field] ?? ""}
+              onChange={(e) => onChange(seg.field, e.target.value)}
+              placeholder={seg.placeholder}
+              autoFocus={autoFocus && isFirst}
+              aria-label={seg.field}
+              className={`${WIDTH_CLASS[seg.width]} border-0 border-b-2 border-zinc-300 bg-transparent px-1 py-0.5 text-center text-zinc-900 outline-none transition-colors placeholder:text-zinc-300 focus:border-zinc-900 dark:border-zinc-600 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-white`}
+            />
+          );
+        })}
+      </div>
+      {removable && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove this entry"
+          className="shrink-0 rounded-md px-2 py-1 text-sm text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+function entryToLine(stepDef: BlankStep, entry: Entry): string {
+  return stepDef.segments
+    .map((seg) =>
+      seg.type === "text"
+        ? seg.text
+        : (entry[seg.field] || "").trim() || seg.placeholder,
+    )
+    .join(" ");
+}
+
+function isEntryFilled(entry: Entry): boolean {
+  return Object.values(entry).some((v) => v.trim() !== "");
+}
+
 function Summary({
   answers,
   onEdit,
@@ -240,12 +382,12 @@ function Summary({
   const busynessLabel =
     BUSYNESS_OPTIONS.find((o) => o.value === answers.busyness)?.label ?? "—";
 
-  const rows: { label: string; value: string }[] = [
-    { label: "Fixed-time programs", value: answers.fixedTime },
-    { label: "Flexible programs", value: answers.flexible },
-    { label: "Wants", value: answers.wants },
-    { label: "Busyness", value: busynessLabel },
-  ];
+  const sections = BLANK_STEPS.map((stepDef) => {
+    const lines = answers[stepDef.key]
+      .filter(isEntryFilled)
+      .map((entry) => entryToLine(stepDef, entry));
+    return { title: stepDef.title, lines };
+  });
 
   return (
     <Shell>
@@ -260,16 +402,28 @@ function Summary({
       </div>
 
       <dl className="flex flex-col divide-y divide-black/[.06] dark:divide-white/[.08]">
-        {rows.map((r) => (
-          <div key={r.label} className="flex flex-col gap-1 py-3">
+        {sections.map((s) => (
+          <div key={s.title} className="flex flex-col gap-1 py-3">
             <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-              {r.label}
+              {s.title}
             </dt>
-            <dd className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">
-              {r.value.trim() ? r.value : <span className="text-zinc-400">—</span>}
+            <dd className="flex flex-col gap-0.5 text-sm text-zinc-800 dark:text-zinc-200">
+              {s.lines.length ? (
+                s.lines.map((line, i) => <span key={i}>{line}</span>)
+              ) : (
+                <span className="text-zinc-400">—</span>
+              )}
             </dd>
           </div>
         ))}
+        <div className="flex flex-col gap-1 py-3">
+          <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+            Busyness
+          </dt>
+          <dd className="text-sm text-zinc-800 dark:text-zinc-200">
+            {busynessLabel}
+          </dd>
+        </div>
       </dl>
 
       <div className="flex items-center justify-between gap-3 pt-2">
