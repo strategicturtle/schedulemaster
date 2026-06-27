@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { generateWeek } from "@/lib/schedule";
+import { ScheduleGrid } from "@/components/ScheduleGrid";
 
 type Busyness = "middle" | "packed" | "loose";
 
@@ -150,14 +152,15 @@ export function SurveyWizard() {
   }
 
   if (submitted) {
+    const week = generateWeek(answers);
     return (
-      <Summary
-        answers={answers}
+      <ScheduleGrid
+        week={week}
+        onBack={restart}
         onEdit={() => {
           setSubmitted(false);
           setStep(0);
         }}
-        onRestart={restart}
       />
     );
   }
@@ -393,100 +396,6 @@ function BlankRow({
         </button>
       )}
     </div>
-  );
-}
-
-function entryToLine(stepDef: BlankStep, entry: Entry): string {
-  return stepDef.segments
-    .map((seg) => {
-      if (seg.type === "text") return seg.text;
-      if (seg.type === "time") {
-        const h = (entry[seg.hourField] || "").trim() || "_";
-        const m = (entry[seg.minField] || "").trim() || "__";
-        return `${h}:${m}`;
-      }
-      return (entry[seg.field] || "").trim() || seg.placeholder;
-    })
-    .join(" ");
-}
-
-function isEntryFilled(entry: Entry): boolean {
-  return Object.values(entry).some((v) => v.trim() !== "");
-}
-
-function Summary({
-  answers,
-  onEdit,
-  onRestart,
-}: {
-  answers: Answers;
-  onEdit: () => void;
-  onRestart: () => void;
-}) {
-  const busynessLabel =
-    BUSYNESS_OPTIONS.find((o) => o.value === answers.busyness)?.label ?? "—";
-
-  const sections = BLANK_STEPS.map((stepDef) => {
-    const lines = answers[stepDef.key]
-      .filter(isEntryFilled)
-      .map((entry) => entryToLine(stepDef, entry));
-    return { title: stepDef.title, lines };
-  });
-
-  return (
-    <Shell>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          Survey complete
-        </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Here&apos;s what you entered. Schedule generation comes next — this
-          screen becomes the schedule view.
-        </p>
-      </div>
-
-      <dl className="flex flex-col divide-y divide-black/[.06] dark:divide-white/[.08]">
-        {sections.map((s) => (
-          <div key={s.title} className="flex flex-col gap-1 py-3">
-            <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-              {s.title}
-            </dt>
-            <dd className="flex flex-col gap-0.5 text-sm text-zinc-800 dark:text-zinc-200">
-              {s.lines.length ? (
-                s.lines.map((line, i) => <span key={i}>{line}</span>)
-              ) : (
-                <span className="text-zinc-400">—</span>
-              )}
-            </dd>
-          </div>
-        ))}
-        <div className="flex flex-col gap-1 py-3">
-          <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-            Busyness
-          </dt>
-          <dd className="text-sm text-zinc-800 dark:text-zinc-200">
-            {busynessLabel}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="flex items-center justify-between gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onRestart}
-          className="h-11 rounded-lg px-4 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-white"
-        >
-          Start over
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="h-11 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          Edit answers
-        </button>
-      </div>
-    </Shell>
   );
 }
 
