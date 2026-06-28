@@ -37,12 +37,17 @@ function toSchedule(raw: {
   blocks: Week | null;
   folderId: string | null;
 }): SavedSchedule {
+  const blocks = raw.blocks
+    ? raw.blocks.map((day, di) =>
+        day.map((b, bi) => (b.id ? b : { ...b, id: `b${di}-${bi}` })),
+      )
+    : null;
   return {
     id: raw.id,
     title: raw.title,
     createdAt: new Date(raw.createdAt).getTime(),
     answers: raw.answers,
-    blocks: raw.blocks ?? null,
+    blocks,
     folderId: raw.folderId,
   };
 }

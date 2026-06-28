@@ -6,6 +6,7 @@ export type Busyness = "middle" | "packed" | "loose";
 export type BlockKind = "fixed" | "flex" | "want";
 
 export type Block = {
+  id: string; // stable within a week, for selection + drag/resize
   title: string;
   startMin: number; // minutes from midnight
   endMin: number;
@@ -149,6 +150,8 @@ export function scoreWant(title: string): {
 export function generateWeek(answers: SurveyAnswers): Week {
   const busyness: Busyness = answers.busyness ?? "middle";
   const week: Week = Array.from({ length: 7 }, () => []);
+  let uid = 0;
+  const nid = () => `b${uid++}`;
 
   // 1) Fixed-time programs — placed exactly on their day(s).
   for (const entry of answers.fixedTime) {
@@ -159,6 +162,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
     const targets = days.length ? days : [0, 1, 2, 3, 4]; // default weekdays
     for (const d of targets) {
       week[d].push({
+        id: nid(),
         title,
         startMin: range.start,
         endMin: range.end,
@@ -190,6 +194,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
       const slot = findSlot(week[d], duration, win, 9 * 60); // prefer from 9:00
       if (slot)
         week[d].push({
+          id: nid(),
           title: named,
           startMin: slot.start,
           endMin: slot.end,
@@ -224,6 +229,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
       const slot = findSlot(week[d], duration, win, from);
       if (slot)
         week[d].push({
+          id: nid(),
           title,
           startMin: slot.start,
           endMin: slot.end,

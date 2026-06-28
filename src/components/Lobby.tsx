@@ -10,6 +10,26 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+// Deterministic colorful banner gradient per schedule (Classroom-style).
+const BANNERS = [
+  "from-rose-500 to-orange-400",
+  "from-amber-400 to-yellow-300",
+  "from-emerald-500 to-teal-400",
+  "from-sky-500 to-indigo-500",
+  "from-violet-500 to-fuchsia-500",
+  "from-blue-600 to-cyan-400",
+  "from-pink-500 to-rose-400",
+  "from-lime-500 to-green-400",
+  "from-purple-600 to-indigo-500",
+  "from-cyan-500 to-blue-500",
+];
+
+function bannerFor(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return BANNERS[Math.abs(h) % BANNERS.length];
+}
+
 export function Lobby({
   username,
   schedules,
@@ -60,7 +80,7 @@ export function Lobby({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-6 sm:py-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6 sm:py-8">
       <header className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
@@ -179,8 +199,8 @@ export function Lobby({
         </div>
       )}
 
-      {/* Schedule list */}
-      <section className="flex flex-col gap-2">
+      {/* Schedule grid */}
+      <section>
         {visible.length === 0 ? (
           <div className="rounded-xl border border-dashed border-black/[.12] p-8 text-center text-sm text-zinc-400 dark:border-white/[.15]">
             {schedules.length === 0
@@ -188,77 +208,105 @@ export function Lobby({
               : "No schedules match."}
           </div>
         ) : (
-          visible.map((s) => (
-            <article
-              key={s.id}
-              className="flex items-center gap-3 rounded-xl border border-black/[.08] bg-white/60 p-3 dark:border-white/[.1] dark:bg-zinc-900/40"
-            >
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                {renamingId === s.id ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => {
-                      onRename(s.id, renameValue.trim() || s.title);
-                      setRenamingId(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        onRename(s.id, renameValue.trim() || s.title);
-                        setRenamingId(null);
-                      }
-                    }}
-                    className="h-8 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15]"
-                  />
-                ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {visible.map((s) => {
+              const folderName = folders.find(
+                (f) => f.id === s.folderId,
+              )?.name;
+              return (
+                <article
+                  key={s.id}
+                  className="group flex flex-col overflow-hidden rounded-xl border border-black/[.08] bg-white shadow-sm transition-shadow hover:shadow-md dark:border-white/[.1] dark:bg-zinc-900"
+                >
+                  {/* Colorful banner */}
                   <button
                     type="button"
                     onClick={() => onOpen(s.id)}
-                    className="truncate text-left font-medium hover:underline"
+                    className={`relative flex h-28 items-end bg-gradient-to-br p-3 text-left ${bannerFor(
+                      s.id,
+                    )}`}
                   >
-                    {s.title}
+                    <span className="line-clamp-2 text-base font-semibold leading-snug text-white drop-shadow-sm">
+                      {s.title}
+                    </span>
                   </button>
-                )}
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span>{dateFmt.format(s.createdAt)}</span>
-                  {/* Move-to-folder */}
-                  <select
-                    value={s.folderId ?? ""}
-                    onChange={(e) => onMove(s.id, e.target.value || null)}
-                    aria-label="Move to folder"
-                    className="rounded border border-black/[.1] bg-transparent px-1 py-0.5 text-xs text-zinc-500 outline-none dark:border-white/[.15]"
-                  >
-                    <option value="">No folder</option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setRenamingId(s.id);
-                  setRenameValue(s.title);
-                }}
-                aria-label="Rename"
-                className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-              >
-                ✏️
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(s.id)}
-                aria-label="Delete schedule"
-                className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-red-600"
-              >
-                🗑
-              </button>
-            </article>
-          ))
+
+                  {/* Body */}
+                  <div className="flex flex-1 flex-col gap-2 p-3">
+                    {renamingId === s.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => {
+                          onRename(s.id, renameValue.trim() || s.title);
+                          setRenamingId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            onRename(s.id, renameValue.trim() || s.title);
+                            setRenamingId(null);
+                          }
+                        }}
+                        className="h-8 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15]"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onOpen(s.id)}
+                        className="truncate text-left text-sm font-medium hover:underline"
+                      >
+                        {s.title}
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <span aria-hidden>🗓</span>
+                      <span>{dateFmt.format(s.createdAt)}</span>
+                      {folderName && (
+                        <span className="truncate">· 📁 {folderName}</span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-auto flex items-center gap-1 pt-1">
+                      <select
+                        value={s.folderId ?? ""}
+                        onChange={(e) => onMove(s.id, e.target.value || null)}
+                        aria-label="Move to folder"
+                        className="mr-auto rounded border border-black/[.1] bg-transparent px-1 py-0.5 text-xs text-zinc-500 outline-none dark:border-white/[.15]"
+                      >
+                        <option value="">No folder</option>
+                        {folders.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingId(s.id);
+                          setRenameValue(s.title);
+                        }}
+                        aria-label="Rename"
+                        className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(s.id)}
+                        aria-label="Delete schedule"
+                        className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-red-600"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
       </section>
 
