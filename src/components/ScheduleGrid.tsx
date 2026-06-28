@@ -106,8 +106,8 @@ export function ScheduleGrid({
               {hours.map((m) => (
                 <div
                   key={m}
-                  className="absolute right-1 -translate-y-1/2 text-[10px] tabular-nums text-zinc-400"
-                  style={{ top: (m - start) * PX_PER_MIN }}
+                  className="absolute right-1 text-[10px] leading-none tabular-nums text-zinc-400"
+                  style={{ top: (m - start) * PX_PER_MIN + 2 }}
                 >
                   {formatTime(m)}
                 </div>
