@@ -48,6 +48,10 @@ model Schedule {
   id        String   @id @default(cuid())
   title     String
   answers   Json
+  // Materialized, drag-editable week (Block[][]); regenerated when the
+  // survey changes. Nullable for older rows — the UI falls back to
+  // generating from `answers`.
+  blocks    Json?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   folderId  String?

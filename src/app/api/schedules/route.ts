@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { defaultTitle, type SurveyAnswers } from "@/lib/schedule";
+import { defaultTitle, generateWeek, type SurveyAnswers } from "@/lib/schedule";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       userId: user.id,
       title: defaultTitle(answers),
       answers,
+      blocks: generateWeek(answers),
       folderId: null,
     },
   });

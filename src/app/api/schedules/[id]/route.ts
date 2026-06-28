@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import type { SurveyAnswers } from "@/lib/schedule";
+import { generateWeek, type SurveyAnswers, type Week } from "@/lib/schedule";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,6 +14,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     title?: string;
     folderId?: string | null;
     answers?: SurveyAnswers;
+    blocks?: Week;
   };
 
   const owned = await prisma.schedule.findFirst({
@@ -26,7 +27,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
     data: {
       ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.folderId !== undefined ? { folderId: patch.folderId } : {}),
-      ...(patch.answers !== undefined ? { answers: patch.answers } : {}),
+      // Changing the survey regenerates the week (discards manual moves).
+      ...(patch.answers !== undefined
+        ? { answers: patch.answers, blocks: generateWeek(patch.answers) }
+        : {}),
+      // A drag persists just the new block positions.
+      ...(patch.blocks !== undefined ? { blocks: patch.blocks } : {}),
     },
   });
   return NextResponse.json({ schedule });

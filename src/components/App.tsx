@@ -96,9 +96,11 @@ export function App() {
       setView({ name: "lobby" });
       return null;
     }
+    const week = schedule.blocks ?? generateWeek(schedule.answers);
     return (
       <ScheduleGrid
-        week={generateWeek(schedule.answers)}
+        key={schedule.id}
+        week={week}
         title={schedule.title}
         onBack={() => setView({ name: "lobby" })}
         onEdit={() =>
@@ -108,6 +110,15 @@ export function App() {
             initial: schedule.answers,
           })
         }
+        onChange={(newWeek) => {
+          // Optimistic: show the move immediately, persist in the background.
+          setSchedules((list) =>
+            list.map((s) =>
+              s.id === schedule.id ? { ...s, blocks: newWeek } : s,
+            ),
+          );
+          updateSchedule(schedule.id, { blocks: newWeek }).catch(() => {});
+        }}
       />
     );
   }

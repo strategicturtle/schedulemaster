@@ -2,13 +2,14 @@
 // Postgres, scoped to the logged-in user; these helpers call the route
 // handlers under /api and normalize the JSON shapes the UI expects.
 
-import type { SurveyAnswers } from "@/lib/schedule";
+import type { SurveyAnswers, Week } from "@/lib/schedule";
 
 export type SavedSchedule = {
   id: string;
   title: string;
   createdAt: number;
   answers: SurveyAnswers;
+  blocks: Week | null;
   folderId: string | null;
 };
 
@@ -33,6 +34,7 @@ function toSchedule(raw: {
   title: string;
   createdAt: string;
   answers: SurveyAnswers;
+  blocks: Week | null;
   folderId: string | null;
 }): SavedSchedule {
   return {
@@ -40,6 +42,7 @@ function toSchedule(raw: {
     title: raw.title,
     createdAt: new Date(raw.createdAt).getTime(),
     answers: raw.answers,
+    blocks: raw.blocks ?? null,
     folderId: raw.folderId,
   };
 }
@@ -98,7 +101,12 @@ export async function createSchedule(answers: SurveyAnswers): Promise<SavedSched
 
 export async function updateSchedule(
   id: string,
-  patch: { title?: string; folderId?: string | null; answers?: SurveyAnswers },
+  patch: {
+    title?: string;
+    folderId?: string | null;
+    answers?: SurveyAnswers;
+    blocks?: Week;
+  },
 ): Promise<SavedSchedule> {
   const res = await fetch(`/api/schedules/${id}`, {
     method: "PATCH",

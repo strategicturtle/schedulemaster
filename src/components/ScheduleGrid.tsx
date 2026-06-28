@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   DAY_LABELS,
   formatTime,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/schedule";
 
 const PX_PER_MIN = 1; // 1 hour = 60px
+const SNAP = 15; // drop snaps to 15-minute steps
 
 const KIND_STYLES: Record<Block["kind"], string> = {
   fixed: "bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900",
@@ -22,16 +24,26 @@ const KIND_LABEL: Record<Block["kind"], string> = {
   want: "Want",
 };
 
+type DragState = {
+  di: number;
+  bi: number;
+  block: Block;
+  grabX: number; // pointer offset inside the block
+  grabY: number;
+};
+
 export function ScheduleGrid({
   week,
   title = "Your schedule",
   onBack,
   onEdit,
+  onChange,
 }: {
   week: Week;
   title?: string;
   onBack: () => void;
   onEdit: () => void;
+  onChange: (week: Week) => void;
 }) {
   const { start, end } = weekBounds(week);
   const totalMin = end - start;
@@ -40,6 +52,79 @@ export function ScheduleGrid({
   for (let m = start; m <= end; m += 60) hours.push(m);
 
   const isEmpty = week.every((d) => d.length === 0);
+
+  // First day column, used to measure the grid geometry on drop.
+  const colRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; w: number } | null>(
+    null,
+  );
+
+  // While a drag is active, track the pointer and commit on release.
+  useEffect(() => {
+    if (!drag) return;
+
+    function onMove(e: PointerEvent) {
+      setGhost((g) =>
+        g ? { ...g, x: e.clientX - drag!.grabX, y: e.clientY - drag!.grabY } : g,
+      );
+    }
+
+    function onUp(e: PointerEvent) {
+      const col = colRef.current;
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        const colW = cr.width;
+        const duration = drag!.block.endMin - drag!.block.startMin;
+
+        // Which day column did we drop over?
+        const day = Math.max(
+          0,
+          Math.min(6, Math.floor((e.clientX - cr.left) / colW)),
+        );
+        // What start time, from the block's top edge, snapped to 15 min?
+        const topY = e.clientY - drag!.grabY;
+        const rawStart = start + (topY - cr.top) / PX_PER_MIN;
+        const snapped = Math.round(rawStart / SNAP) * SNAP;
+        const startMin = Math.max(start, Math.min(end - duration, snapped));
+
+        const moved: Block = {
+          ...drag!.block,
+          startMin,
+          endMin: startMin + duration,
+        };
+        const next: Week = week.map((d, di) =>
+          di === drag!.di ? d.filter((_, bi) => bi !== drag!.bi) : d.slice(),
+        );
+        next[day] = [...next[day], moved].sort(
+          (a, b) => a.startMin - b.startMin,
+        );
+        onChange(next);
+      }
+      setDrag(null);
+      setGhost(null);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [drag, week, start, end, onChange]);
+
+  function startDrag(e: React.PointerEvent, di: number, bi: number) {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDrag({
+      di,
+      bi,
+      block: week[di][bi],
+      grabX: e.clientX - rect.left,
+      grabY: e.clientY - rect.top,
+    });
+    setGhost({ x: rect.left, y: rect.top, w: rect.width });
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-3 py-6 sm:px-4 sm:py-8">
@@ -76,6 +161,9 @@ export function ScheduleGrid({
             {KIND_LABEL[k]}
           </span>
         ))}
+        {!isEmpty && (
+          <span className="text-zinc-400">· drag a block to move it</span>
+        )}
       </div>
 
       {isEmpty ? (
@@ -118,6 +206,7 @@ export function ScheduleGrid({
             {week.map((day, di) => (
               <div
                 key={di}
+                ref={di === 0 ? colRef : undefined}
                 className="relative border-l border-black/[.06] dark:border-white/[.08]"
                 style={{ height }}
               >
@@ -132,10 +221,15 @@ export function ScheduleGrid({
                   // Top edge = start time, bottom edge = end time (exact).
                   const top = (b.startMin - start) * PX_PER_MIN;
                   const h = (b.endMin - b.startMin) * PX_PER_MIN;
+                  const isDragged =
+                    drag !== null && drag.di === di && drag.bi === bi;
                   return (
                     <div
                       key={bi}
-                      className={`absolute inset-x-0.5 overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight shadow-sm ${KIND_STYLES[b.kind]}`}
+                      onPointerDown={(e) => startDrag(e, di, bi)}
+                      className={`absolute inset-x-0.5 cursor-grab touch-none select-none overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight shadow-sm active:cursor-grabbing ${
+                        KIND_STYLES[b.kind]
+                      } ${isDragged ? "opacity-30" : ""}`}
                       style={{ top, height: h }}
                       title={`${b.title} · ${formatTime(b.startMin)}–${formatTime(b.endMin)}`}
                     >
@@ -150,6 +244,24 @@ export function ScheduleGrid({
                 })}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Floating drag ghost */}
+      {drag && ghost && (
+        <div
+          className={`pointer-events-none fixed z-50 overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight opacity-90 shadow-lg ${KIND_STYLES[drag.block.kind]}`}
+          style={{
+            left: ghost.x,
+            top: ghost.y,
+            width: ghost.w,
+            height: (drag.block.endMin - drag.block.startMin) * PX_PER_MIN,
+          }}
+        >
+          <div className="truncate font-medium">{drag.block.title}</div>
+          <div className="truncate opacity-80">
+            {formatTime(drag.block.startMin)}
           </div>
         </div>
       )}
