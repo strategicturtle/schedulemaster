@@ -8,7 +8,7 @@ import {
   type Week,
 } from "@/lib/schedule";
 
-const PX_PER_MIN = 0.75; // 1 hour ≈ 45px
+const PX_PER_MIN = 1; // 1 hour = 60px
 
 const KIND_STYLES: Record<Block["kind"], string> = {
   fixed: "bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900",
@@ -129,8 +129,9 @@ export function ScheduleGrid({
                   />
                 ))}
                 {day.map((b, bi) => {
+                  // Top edge = start time, bottom edge = end time (exact).
                   const top = (b.startMin - start) * PX_PER_MIN;
-                  const h = Math.max((b.endMin - b.startMin) * PX_PER_MIN, 16);
+                  const h = (b.endMin - b.startMin) * PX_PER_MIN;
                   return (
                     <div
                       key={bi}

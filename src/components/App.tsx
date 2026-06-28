@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SurveyWizard, type Answers } from "@/components/SurveyWizard";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Lobby } from "@/components/Lobby";
+import { Login } from "@/components/Login";
 import { generateWeek } from "@/lib/schedule";
 import {
-  defaultTitle,
-  genId,
-  loadFolders,
-  loadSchedules,
-  saveFolders,
-  saveSchedules,
+  createFolder,
+  createSchedule,
+  deleteFolder,
+  deleteSchedule,
+  fetchFolders,
+  fetchMe,
+  fetchSchedules,
+  logout,
+  updateSchedule,
+  type AuthUser,
   type Folder,
   type SavedSchedule,
 } from "@/lib/storage";
@@ -22,47 +27,58 @@ type View =
   | { name: "schedule"; id: string };
 
 export function App() {
-  const [mounted, setMounted] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [schedules, setSchedules] = useState<SavedSchedule[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [view, setView] = useState<View>({ name: "lobby" });
 
-  // Load persisted data on first mount (browser only).
-  useEffect(() => {
-    setSchedules(loadSchedules());
-    setFolders(loadFolders());
-    setMounted(true);
+  // Load the signed-in user's data (called after login and on first mount).
+  const loadData = useCallback(async () => {
+    const [s, f] = await Promise.all([fetchSchedules(), fetchFolders()]);
+    setSchedules(s);
+    setFolders(f);
   }, []);
 
   useEffect(() => {
-    if (mounted) saveSchedules(schedules);
-  }, [schedules, mounted]);
-  useEffect(() => {
-    if (mounted) saveFolders(folders);
-  }, [folders, mounted]);
+    (async () => {
+      const me = await fetchMe();
+      setUser(me);
+      if (me) await loadData().catch(() => {});
+      setBooting(false);
+    })();
+  }, [loadData]);
 
-  // Avoid hydration mismatch: render nothing until localStorage is read.
-  if (!mounted) return null;
+  async function onAuthed(authed: AuthUser) {
+    setUser(authed);
+    setView({ name: "lobby" });
+    await loadData().catch(() => {});
+  }
 
-  function completeSurvey(answers: Answers) {
+  async function onLogout() {
+    await logout().catch(() => {});
+    setUser(null);
+    setSchedules([]);
+    setFolders([]);
+    setView({ name: "lobby" });
+  }
+
+  async function completeSurvey(answers: Answers) {
     if (view.name === "survey" && view.editingId) {
       const id = view.editingId;
-      setSchedules((list) =>
-        list.map((s) => (s.id === id ? { ...s, answers } : s)),
-      );
+      const updated = await updateSchedule(id, { answers });
+      setSchedules((list) => list.map((s) => (s.id === id ? updated : s)));
       setView({ name: "schedule", id });
     } else {
-      const schedule: SavedSchedule = {
-        id: genId(),
-        title: defaultTitle(answers),
-        createdAt: Date.now(),
-        answers,
-        folderId: null,
-      };
-      setSchedules((list) => [...list, schedule]);
-      setView({ name: "schedule", id: schedule.id });
+      const created = await createSchedule(answers);
+      setSchedules((list) => [created, ...list]);
+      setView({ name: "schedule", id: created.id });
     }
   }
+
+  if (booting) return null;
+
+  if (!user) return <Login onAuthed={onAuthed} />;
 
   if (view.name === "survey") {
     return (
@@ -98,32 +114,32 @@ export function App() {
 
   return (
     <Lobby
+      username={user.username}
       schedules={schedules}
       folders={folders}
+      onLogout={onLogout}
       onNew={() => setView({ name: "survey", editingId: null, initial: null })}
       onOpen={(id) => setView({ name: "schedule", id })}
-      onDelete={(id) =>
-        setSchedules((list) => list.filter((s) => s.id !== id))
-      }
-      onRename={(id, title) =>
-        setSchedules((list) =>
-          list.map((s) => (s.id === id ? { ...s, title } : s)),
-        )
-      }
-      onMove={(id, folderId) =>
-        setSchedules((list) =>
-          list.map((s) => (s.id === id ? { ...s, folderId } : s)),
-        )
-      }
-      onAddFolder={(name) =>
-        setFolders((list) => [
-          ...list,
-          { id: genId(), name, createdAt: Date.now() },
-        ])
-      }
-      onDeleteFolder={(id) => {
+      onDelete={async (id) => {
+        await deleteSchedule(id);
+        setSchedules((list) => list.filter((s) => s.id !== id));
+      }}
+      onRename={async (id, title) => {
+        const updated = await updateSchedule(id, { title });
+        setSchedules((list) => list.map((s) => (s.id === id ? updated : s)));
+      }}
+      onMove={async (id, folderId) => {
+        const updated = await updateSchedule(id, { folderId });
+        setSchedules((list) => list.map((s) => (s.id === id ? updated : s)));
+      }}
+      onAddFolder={async (name) => {
+        const folder = await createFolder(name);
+        setFolders((list) => [...list, folder]);
+      }}
+      onDeleteFolder={async (id) => {
+        await deleteFolder(id);
         setFolders((list) => list.filter((f) => f.id !== id));
-        // Detach schedules from the removed folder.
+        // Detach schedules from the removed folder (server already did this).
         setSchedules((list) =>
           list.map((s) => (s.folderId === id ? { ...s, folderId: null } : s)),
         );

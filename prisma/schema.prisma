@@ -10,5 +10,50 @@ datasource db {
   provider = "postgresql"
 }
 
-// Real models (Schedule, Folder, Comment, Survey, …) will be added here as
-// the app is built out. The mock Event model was removed.
+// Accounts, sessions, and the per-user schedules + folders they own.
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  sessions     Session[]
+  schedules    Schedule[]
+  folders      Folder[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Folder {
+  id        String     @id @default(cuid())
+  name      String
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  schedules Schedule[]
+
+  @@index([userId])
+}
+
+model Schedule {
+  id        String   @id @default(cuid())
+  title     String
+  answers   Json
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId  String?
+  folder    Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([folderId])
+}

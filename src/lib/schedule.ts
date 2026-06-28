@@ -104,16 +104,6 @@ const WANT_DURATION: Record<Busyness, number> = {
   loose: 30,
 };
 
-const BUSYNESS_FACTOR: Record<Busyness, number> = {
-  loose: 0.5,
-  middle: 1,
-  packed: 1.5,
-};
-
-// Productive wants lean toward weekdays; leisure wants lean toward weekends.
-const WEEKDAY_PRIORITY = [0, 2, 4, 1, 3, 5, 6]; // Mon, Wed, Fri, Tue, Thu, Sat, Sun
-const WEEKEND_PRIORITY = [5, 6, 2, 4, 0, 3, 1]; // Sat, Sun, Wed, Fri, Mon, Thu, Tue
-
 const PRODUCTIVE_WORDS = [
   "study", "studying", "read", "reading", "homework", "practice", "learn",
   "learning", "code", "coding", "program", "write", "writing", "chore",
@@ -207,29 +197,30 @@ export function generateWeek(answers: SurveyAnswers): Week {
     }
   }
 
-  // 3) Wants — SM rates each want for productiveness + healthiness and uses
-  // that (with busyness) to decide the number of days, whether to do it at
-  // all, the time, and which days.
-  const wantDuration = WANT_DURATION[busyness];
+  // 3) Wants — the user picks the day(s); SM generates ONLY the duration and
+  // the time of day, scaled by how productive + healthy the want is.
+  const wantBase = WANT_DURATION[busyness];
   for (const entry of answers.wants) {
     const title = (entry.want || "").trim();
     if (!title) continue;
 
     const { productivity, health } = scoreWant(title);
     const value = (productivity + health) / 2; // 0–1 overall worth
-    const count = Math.max(
-      0,
-      Math.min(7, Math.round(value * 7 * BUSYNESS_FACTOR[busyness])),
-    );
-    if (count === 0) continue; // SM decided it's not worth scheduling
 
-    // Productive wants lean to weekdays + productive morning hours; leisure
-    // wants lean to weekends + the afternoon.
-    const priority = productivity >= 0.6 ? WEEKDAY_PRIORITY : WEEKEND_PRIORITY;
+    // Generated duration: more productive/healthy wants get more time;
+    // unhealthy ones get less. Rounded to 15-minute increments.
+    const duration = Math.max(
+      15,
+      Math.round((wantBase * (0.6 + 0.8 * value)) / 15) * 15,
+    );
+
+    // Productive wants land in productive morning hours; leisure in the
+    // afternoon. The day(s) come from the user, defaulting to the weekend.
     const from = productivity >= 0.5 ? 9 * 60 : 15 * 60;
-    const days = priority.slice(0, count).sort((a, b) => a - b);
+    const parsed = parseDays(entry.day);
+    const days = parsed.length ? parsed : [5, 6];
     for (const d of days) {
-      const slot = findSlot(week[d], wantDuration, win, from);
+      const slot = findSlot(week[d], duration, win, from);
       if (slot)
         week[d].push({
           title,
@@ -258,6 +249,21 @@ export function weekBounds(week: Week): { start: number; end: number } {
   start = Math.floor(start / 60) * 60;
   end = Math.ceil(end / 60) * 60;
   return { start, end };
+}
+
+/** Pick a sensible default title from the survey answers. */
+export function defaultTitle(answers: SurveyAnswers): string {
+  const candidates = [
+    ...answers.fixedTime.map((e) => e.program),
+    ...answers.flexible.map((e) => e.name),
+    ...answers.wants.map((e) => e.want),
+  ];
+  const first = candidates.map((c) => (c || "").trim()).find(Boolean);
+  if (first) {
+    const titled = first.charAt(0).toUpperCase() + first.slice(1);
+    return titled.length > 40 ? `${titled.slice(0, 40)}…` : titled;
+  }
+  return "My schedule";
 }
 
 export function formatTime(min: number): string {

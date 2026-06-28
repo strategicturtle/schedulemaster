@@ -1,4 +1,6 @@
-// Browser-local persistence for ScheduleMaster (no accounts yet).
+// Client-side API wrapper for ScheduleMaster. Schedules and folders live in
+// Postgres, scoped to the logged-in user; these helpers call the route
+// handlers under /api and normalize the JSON shapes the UI expects.
 
 import type { SurveyAnswers } from "@/lib/schedule";
 
@@ -16,54 +18,117 @@ export type Folder = {
   createdAt: number;
 };
 
-const SCHEDULES_KEY = "sm.schedules";
-const FOLDERS_KEY = "sm.folders";
+export type AuthUser = { id: string; username: string };
 
-export function genId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((body as { error?: string }).error || `Request failed (${res.status})`);
   }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return body as T;
 }
 
-function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+function toSchedule(raw: {
+  id: string;
+  title: string;
+  createdAt: string;
+  answers: SurveyAnswers;
+  folderId: string | null;
+}): SavedSchedule {
+  return {
+    id: raw.id,
+    title: raw.title,
+    createdAt: new Date(raw.createdAt).getTime(),
+    answers: raw.answers,
+    folderId: raw.folderId,
+  };
 }
 
-function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore quota / serialization errors */
-  }
+function toFolder(raw: { id: string; name: string; createdAt: string }): Folder {
+  return { id: raw.id, name: raw.name, createdAt: new Date(raw.createdAt).getTime() };
 }
 
-export const loadSchedules = (): SavedSchedule[] =>
-  read<SavedSchedule[]>(SCHEDULES_KEY, []);
-export const saveSchedules = (s: SavedSchedule[]): void =>
-  write(SCHEDULES_KEY, s);
+// ---- Auth -----------------------------------------------------------------
 
-export const loadFolders = (): Folder[] => read<Folder[]>(FOLDERS_KEY, []);
-export const saveFolders = (f: Folder[]): void => write(FOLDERS_KEY, f);
+export async function fetchMe(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/me");
+  if (!res.ok) return null;
+  const body = (await res.json()) as { user: AuthUser | null };
+  return body.user;
+}
 
-/** Pick a sensible default title from the survey answers. */
-export function defaultTitle(answers: SurveyAnswers): string {
-  const candidates = [
-    ...answers.fixedTime.map((e) => e.program),
-    ...answers.flexible.map((e) => e.name),
-    ...answers.wants.map((e) => e.want),
-  ];
-  const first = candidates.map((c) => (c || "").trim()).find(Boolean);
-  if (first) {
-    const titled = first.charAt(0).toUpperCase() + first.slice(1);
-    return titled.length > 40 ? `${titled.slice(0, 40)}…` : titled;
-  }
-  return "My schedule";
+export async function signup(username: string, password: string): Promise<AuthUser> {
+  const res = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  return (await jsonOrThrow<{ user: AuthUser }>(res)).user;
+}
+
+export async function login(username: string, password: string): Promise<AuthUser> {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  return (await jsonOrThrow<{ user: AuthUser }>(res)).user;
+}
+
+export async function logout(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST" });
+}
+
+// ---- Schedules ------------------------------------------------------------
+
+export async function fetchSchedules(): Promise<SavedSchedule[]> {
+  const res = await fetch("/api/schedules");
+  const body = await jsonOrThrow<{ schedules: Parameters<typeof toSchedule>[0][] }>(res);
+  return body.schedules.map(toSchedule);
+}
+
+export async function createSchedule(answers: SurveyAnswers): Promise<SavedSchedule> {
+  const res = await fetch("/api/schedules", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+  return toSchedule((await jsonOrThrow<{ schedule: Parameters<typeof toSchedule>[0] }>(res)).schedule);
+}
+
+export async function updateSchedule(
+  id: string,
+  patch: { title?: string; folderId?: string | null; answers?: SurveyAnswers },
+): Promise<SavedSchedule> {
+  const res = await fetch(`/api/schedules/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return toSchedule((await jsonOrThrow<{ schedule: Parameters<typeof toSchedule>[0] }>(res)).schedule);
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  await jsonOrThrow(await fetch(`/api/schedules/${id}`, { method: "DELETE" }));
+}
+
+// ---- Folders --------------------------------------------------------------
+
+export async function fetchFolders(): Promise<Folder[]> {
+  const res = await fetch("/api/folders");
+  const body = await jsonOrThrow<{ folders: Parameters<typeof toFolder>[0][] }>(res);
+  return body.folders.map(toFolder);
+}
+
+export async function createFolder(name: string): Promise<Folder> {
+  const res = await fetch("/api/folders", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return toFolder((await jsonOrThrow<{ folder: Parameters<typeof toFolder>[0] }>(res)).folder);
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  await jsonOrThrow(await fetch(`/api/folders/${id}`, { method: "DELETE" }));
 }

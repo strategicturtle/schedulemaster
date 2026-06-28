@@ -11,8 +11,10 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
 });
 
 export function Lobby({
+  username,
   schedules,
   folders,
+  onLogout,
   onNew,
   onOpen,
   onDelete,
@@ -21,8 +23,10 @@ export function Lobby({
   onAddFolder,
   onDeleteFolder,
 }: {
+  username: string;
   schedules: SavedSchedule[];
   folders: Folder[];
+  onLogout: () => void;
   onNew: () => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
@@ -57,13 +61,22 @@ export function Lobby({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-6 sm:py-8">
-      <header className="flex flex-col gap-0.5">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          ScheduleMaster
-        </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Your schedules
-        </p>
+      <header className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            ScheduleMaster
+          </h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Signed in as {username}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="h-9 shrink-0 rounded-lg border border-black/[.1] px-3 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
+        >
+          Log out
+        </button>
       </header>
 
       {/* Search + new */}

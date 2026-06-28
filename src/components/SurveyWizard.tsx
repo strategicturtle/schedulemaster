@@ -72,10 +72,15 @@ const BLANK_STEPS: BlankStep[] = [
   {
     key: "wants",
     title: "Any wants?",
-    // It is ______
-    segments: [txt("It is"), blank("want", "what", "wide")],
-    fields: ["want"],
-    note: "ScheduleManager decides how many days a week, the duration, the time, and whether to do it at all (or only on weekends).",
+    // It is ______ on ____
+    segments: [
+      txt("It is"),
+      blank("want", "what", "wide"),
+      txt("on"),
+      blank("day", "day", "day"),
+    ],
+    fields: ["want", "day"],
+    note: "You pick the day. ScheduleManager generates only the duration (and the time of day) based on how productive and healthy the want is.",
   },
 ];
 
