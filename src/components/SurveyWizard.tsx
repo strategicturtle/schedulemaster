@@ -8,7 +8,7 @@ type Busyness = "middle" | "packed" | "loose";
 // blanks for that question's template.
 type Entry = Record<string, string>;
 
-type BlankWidth = "day" | "wide";
+type BlankWidth = "day" | "wide" | "num";
 
 type Segment =
   | { type: "text"; text: string }
@@ -56,18 +56,16 @@ const BLANK_STEPS: BlankStep[] = [
   {
     key: "flexible",
     title: "Any programs without a fixed time?",
-    // _:__ to _:__ called ____ on ____
+    // ____ for ___ min on ____
     segments: [
-      time("startH", "startM"),
-      txt("to"),
-      time("endH", "endM"),
-      txt("called"),
       blank("name", "what", "wide"),
-      txt("on"),
+      txt("for"),
+      blank("durationMin", "30", "num"),
+      txt("min on"),
       blank("day", "day", "day"),
     ],
-    fields: ["startH", "startM", "endH", "endM", "name", "day"],
-    note: "ScheduleManager will choose the time and duration based on your productivity.",
+    fields: ["name", "durationMin", "day"],
+    note: "Give it a length — ScheduleManager picks the time of day for you based on your productivity.",
   },
   {
     key: "wants",
@@ -300,6 +298,7 @@ const BLANK_INPUT =
 const WIDTH_CLASS: Record<BlankWidth, string> = {
   day: "w-24",
   wide: "w-36 sm:w-44",
+  num: "w-14",
 };
 
 function BlankRow({

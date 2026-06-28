@@ -176,20 +176,21 @@ export function generateWeek(answers: SurveyAnswers): Week {
     }
   }
 
-  // 2) Flexible programs — SM picks a productive (morning-first) open slot.
+  // 2) Flexible programs — the user gives a length; SM picks the time of day
+  // (a productive, morning-first open slot).
   for (const entry of answers.flexible) {
-    const range = timeRange(entry);
     const named = (entry.name || "").trim();
-    if (!named && !range) continue; // skip entirely-empty rows
-    const duration = range ? range.end - range.start : 60;
-    const title = named || "Activity";
+    if (!named) continue; // skip empty rows
+    const mins = parseInt((entry.durationMin || "").trim(), 10);
+    const duration =
+      Number.isNaN(mins) || mins <= 0 ? 60 : Math.min(mins, 12 * 60);
     const days = parseDays(entry.day);
     const targets = days.length ? days : [0, 1, 2, 3, 4];
     for (const d of targets) {
       const slot = findSlot(week[d], duration, win, 9 * 60); // prefer from 9:00
       if (slot)
         week[d].push({
-          title,
+          title: named,
           startMin: slot.start,
           endMin: slot.end,
           kind: "flex",
