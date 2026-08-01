@@ -9,12 +9,14 @@ import { generateWeek } from "@/lib/schedule";
 import {
   createFolder,
   createSchedule,
+  deleteAccount,
   deleteFolder,
   deleteSchedule,
   fetchFolders,
   fetchMe,
   fetchSchedules,
   logout,
+  recordVisit,
   updateSchedule,
   type AuthUser,
   type Folder,
@@ -32,6 +34,7 @@ export function App() {
   const [schedules, setSchedules] = useState<SavedSchedule[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [view, setView] = useState<View>({ name: "lobby" });
+  const [visits, setVisits] = useState<number | null>(null);
 
   // Load the signed-in user's data (called after login and on first mount).
   const loadData = useCallback(async () => {
@@ -42,6 +45,7 @@ export function App() {
 
   useEffect(() => {
     (async () => {
+      recordVisit().then((n) => n !== null && setVisits(n));
       const me = await fetchMe();
       setUser(me);
       if (me) await loadData().catch(() => {});
@@ -63,6 +67,14 @@ export function App() {
     setView({ name: "lobby" });
   }
 
+  async function onDeleteAccount() {
+    await deleteAccount().catch(() => {});
+    setUser(null);
+    setSchedules([]);
+    setFolders([]);
+    setView({ name: "lobby" });
+  }
+
   async function completeSurvey(answers: Answers) {
     if (view.name === "survey" && view.editingId) {
       const id = view.editingId;
@@ -78,7 +90,7 @@ export function App() {
 
   if (booting) return null;
 
-  if (!user) return <Login onAuthed={onAuthed} />;
+  if (!user) return <Login onAuthed={onAuthed} visits={visits} />;
 
   if (view.name === "survey") {
     return (
@@ -102,6 +114,7 @@ export function App() {
         key={schedule.id}
         week={week}
         title={schedule.title}
+        weekStart={schedule.answers.weekStart}
         onBack={() => setView({ name: "lobby" })}
         onEdit={() =>
           setView({
@@ -128,7 +141,9 @@ export function App() {
       username={user.username}
       schedules={schedules}
       folders={folders}
+      visits={visits}
       onLogout={onLogout}
+      onDeleteAccount={onDeleteAccount}
       onNew={() => setView({ name: "survey", editingId: null, initial: null })}
       onOpen={(id) => setView({ name: "schedule", id })}
       onDelete={async (id) => {
@@ -138,6 +153,16 @@ export function App() {
       onRename={async (id, title) => {
         const updated = await updateSchedule(id, { title });
         setSchedules((list) => list.map((s) => (s.id === id ? updated : s)));
+      }}
+      onDuplicate={async (id) => {
+        const src = schedules.find((s) => s.id === id);
+        if (!src) return;
+        const created = await createSchedule(src.answers);
+        const titled = await updateSchedule(created.id, {
+          title: src.title,
+          folderId: src.folderId,
+        });
+        setSchedules((list) => [titled, ...list]);
       }}
       onMove={async (id, folderId) => {
         const updated = await updateSchedule(id, { folderId });

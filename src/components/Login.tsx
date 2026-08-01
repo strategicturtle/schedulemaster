@@ -2,8 +2,18 @@
 
 import { useState } from "react";
 import { login, signup, type AuthUser } from "@/lib/storage";
+import { Mascot } from "@/components/Mascot";
+import { PasswordInput } from "@/components/PasswordInput";
+import { LanguageSwitcher, ThemeToggle, useI18n } from "@/lib/i18n";
 
-export function Login({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
+export function Login({
+  onAuthed,
+  visits,
+}: {
+  onAuthed: (user: AuthUser) => void;
+  visits?: number | null;
+}) {
+  const { t, locale } = useI18n();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +31,13 @@ export function Login({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
       const user = isSignup
         ? await signup(username.trim(), password)
         : await login(username.trim(), password);
+      if (isSignup) {
+        try {
+          localStorage.setItem("sm_tour", "pending");
+        } catch {
+          /* ignore */
+        }
+      }
       onAuthed(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -31,35 +48,42 @@ export function Login({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-10">
-      <header className="flex flex-col gap-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">ScheduleMaster</h1>
+      <div className="flex justify-end gap-1.5">
+        <ThemeToggle />
+        <LanguageSwitcher />
+      </div>
+
+      <header className="flex flex-col items-center gap-1 text-center">
+        <Mascot size={104} className="mb-1" />
+        <h1 className="brand-gradient text-2xl font-bold tracking-tight">
+          ScheduleMaster
+        </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {isSignup ? "Create your account" : "Sign in to your schedules"}
+          {isSignup ? t("login.signup") : t("login.signin")}
         </p>
       </header>
 
       <form
         onSubmit={submit}
-        className="flex flex-col gap-3 rounded-2xl border border-black/[.08] bg-white/60 p-5 shadow-sm dark:border-white/[.1] dark:bg-zinc-900/40"
+        className="relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-black/[.08] bg-white/60 p-5 shadow-sm before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-gradient-to-r before:from-indigo-500 before:via-fuchsia-500 before:to-cyan-400 before:content-[''] dark:border-white/[.1] dark:bg-zinc-900/40"
       >
         <label className="flex flex-col gap-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">
-          Username
+          {t("login.username")}
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoCapitalize="none"
             autoCorrect="off"
             autoFocus
-            className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base font-normal text-zinc-900 outline-none focus:border-zinc-400 dark:border-white/[.15] dark:text-zinc-100"
+            className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base font-normal text-zinc-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15] dark:text-zinc-100"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">
-          Password
-          <input
-            type="password"
+          {t("login.password")}
+          <PasswordInput
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base font-normal text-zinc-900 outline-none focus:border-zinc-400 dark:border-white/[.15] dark:text-zinc-100"
+            onChange={setPassword}
+            className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base font-normal text-zinc-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15] dark:text-zinc-100"
           />
         </label>
 
@@ -72,14 +96,18 @@ export function Login({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
         <button
           type="submit"
           disabled={busy || !username.trim() || !password}
-          className="mt-1 h-11 rounded-lg bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="btn-primary mt-1 h-11 rounded-lg text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {busy ? "Please wait…" : isSignup ? "Sign up" : "Log in"}
+          {busy
+            ? t("login.wait")
+            : isSignup
+              ? t("login.signupBtn")
+              : t("login.loginBtn")}
         </button>
       </form>
 
       <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-        {isSignup ? "Already have an account?" : "New to ScheduleMaster?"}{" "}
+        {isSignup ? t("login.haveAccount") : t("login.newHere")}{" "}
         <button
           type="button"
           onClick={() => {
@@ -88,9 +116,15 @@ export function Login({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
           }}
           className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-white"
         >
-          {isSignup ? "Log in" : "Sign up"}
+          {isSignup ? t("login.loginBtn") : t("login.signupBtn")}
         </button>
       </p>
+
+      {visits != null && (
+        <p className="text-center text-xs text-zinc-400">
+          🌐 {t("common.entered", { n: visits.toLocaleString(locale) })}
+        </p>
+      )}
     </main>
   );
 }

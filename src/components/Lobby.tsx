@@ -1,27 +1,38 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { Folder, SavedSchedule } from "@/lib/storage";
+import { useEffect, useMemo, useState } from "react";
+import { changePassword, type Folder, type SavedSchedule } from "@/lib/storage";
+import { Mascot } from "@/components/Mascot";
+import { PasswordInput } from "@/components/PasswordInput";
+import { LanguageSwitcher, ThemeToggle, useI18n } from "@/lib/i18n";
+import { Tour, type TourStep } from "@/components/Tour";
 
-const dateFmt = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const TOUR_STEPS: TourStep[] = [
+  { target: "howto", textKey: "tour.howto" },
+  { target: "new", textKey: "tour.new" },
+  { target: "newFolder", textKey: "tour.newFolder" },
+  { target: "folders", textKey: "tour.folders" },
+  { target: "search", textKey: "tour.search" },
+  { target: "lang", textKey: "tour.lang" },
+  { target: "logout", textKey: "tour.logout" },
+  { target: "quit", textKey: "tour.quit" },
+];
 
 // Deterministic colorful banner gradient per schedule (Classroom-style).
+// Vivid three-stop gradients so each card pops.
 const BANNERS = [
-  "from-rose-500 to-orange-400",
-  "from-amber-400 to-yellow-300",
-  "from-emerald-500 to-teal-400",
-  "from-sky-500 to-indigo-500",
-  "from-violet-500 to-fuchsia-500",
-  "from-blue-600 to-cyan-400",
-  "from-pink-500 to-rose-400",
-  "from-lime-500 to-green-400",
-  "from-purple-600 to-indigo-500",
-  "from-cyan-500 to-blue-500",
+  "from-rose-500 via-red-500 to-orange-400",
+  "from-amber-400 via-orange-500 to-pink-500",
+  "from-emerald-500 via-teal-500 to-cyan-400",
+  "from-sky-500 via-blue-600 to-indigo-600",
+  "from-violet-600 via-purple-500 to-fuchsia-500",
+  "from-fuchsia-500 via-pink-500 to-rose-500",
+  "from-lime-400 via-green-500 to-emerald-500",
+  "from-indigo-500 via-violet-500 to-purple-600",
+  "from-cyan-400 via-sky-500 to-blue-600",
+  "from-orange-500 via-amber-500 to-yellow-400",
+  "from-pink-500 via-fuchsia-500 to-violet-600",
+  "from-teal-400 via-emerald-500 to-green-600",
 ];
 
 function bannerFor(seed: string) {
@@ -34,11 +45,14 @@ export function Lobby({
   username,
   schedules,
   folders,
+  visits,
   onLogout,
+  onDeleteAccount,
   onNew,
   onOpen,
   onDelete,
   onRename,
+  onDuplicate,
   onMove,
   onAddFolder,
   onDeleteFolder,
@@ -46,18 +60,52 @@ export function Lobby({
   username: string;
   schedules: SavedSchedule[];
   folders: Folder[];
+  visits?: number | null;
   onLogout: () => void;
+  onDeleteAccount: () => void;
   onNew: () => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onDuplicate: (id: string) => void;
   onMove: (id: string, folderId: string | null) => void;
   onAddFolder: (name: string) => void;
   onDeleteFolder: (id: string) => void;
 }) {
+  const { t, locale } = useI18n();
+  const dateFmt = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    [locale],
+  );
   const [search, setSearch] = useState("");
   const [showFolders, setShowFolders] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
+  const [confirmQuit, setConfirmQuit] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+
+  // Show the first-run tour once, right after signup.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("sm_tour") === "pending") setShowTour(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const endTour = () => {
+    setShowTour(false);
+    try {
+      localStorage.setItem("sm_tour", "done");
+    } catch {
+      /* ignore */
+    }
+  };
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
@@ -82,21 +130,48 @@ export function Lobby({
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6 sm:py-8">
       <header className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            ScheduleMaster
-          </h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Signed in as {username}
-          </p>
+        <div className="flex items-center gap-2.5">
+          <Mascot size={44} className="shrink-0" />
+          <div className="flex flex-col gap-0.5">
+            <h1 className="brand-gradient text-xl font-bold tracking-tight sm:text-2xl">
+              ScheduleMaster
+            </h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {t("lobby.signedInAs", { name: username })}
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="h-9 shrink-0 rounded-lg border border-black/[.1] px-3 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
-        >
-          Log out
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <ThemeToggle />
+            <span data-tour="lang">
+              <LanguageSwitcher />
+            </span>
+          </div>
+          <button
+            type="button"
+            data-tour="logout"
+            onClick={onLogout}
+            className="h-9 rounded-lg border border-black/[.1] px-3 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
+          >
+            {t("lobby.logout")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowChangePw(true)}
+            className="h-8 rounded-lg px-3 text-xs font-medium text-zinc-500 transition-colors hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-300"
+          >
+            {t("pw.title")}
+          </button>
+          <button
+            type="button"
+            data-tour="quit"
+            onClick={() => setConfirmQuit(true)}
+            className="h-9 rounded-lg px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+          >
+            {t("lobby.quit")}
+          </button>
+        </div>
       </header>
 
       {/* Search + new */}
@@ -104,15 +179,17 @@ export function Lobby({
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search schedules…"
-          aria-label="Search schedules"
-          className="h-11 flex-1 rounded-lg border border-black/[.1] bg-transparent px-3 text-base outline-none focus:border-zinc-400 dark:border-white/[.15]"
+          placeholder={t("lobby.search")}
+          aria-label={t("lobby.search")}
+          data-tour="search"
+          className="h-11 flex-1 rounded-lg border border-black/[.1] bg-transparent px-3 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15]"
         />
         <button
           type="button"
           onClick={onNew}
-          aria-label="New schedule"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-2xl leading-none text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          aria-label={t("lobby.new")}
+          data-tour="new"
+          className="btn-primary flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-2xl leading-none"
         >
           +
         </button>
@@ -120,20 +197,24 @@ export function Lobby({
 
       {/* Three buttons */}
       <div className="flex flex-wrap gap-2">
-        <ToolButton onClick={() => setShowHowTo(true)}>How to use</ToolButton>
+        <ToolButton dataTour="howto" onClick={() => setShowHowTo(true)}>
+          {t("lobby.howto")}
+        </ToolButton>
         <ToolButton
+          dataTour="newFolder"
           onClick={() => {
             setAddingFolder((v) => !v);
             setShowFolders(true);
           }}
         >
-          New folder
+          {t("lobby.newFolder")}
         </ToolButton>
         <ToolButton
+          dataTour="folders"
           active={showFolders}
           onClick={() => setShowFolders((v) => !v)}
         >
-          Folders
+          {t("lobby.folders")}
         </ToolButton>
       </div>
 
@@ -147,15 +228,15 @@ export function Lobby({
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitFolder()}
-                placeholder="Folder name"
-                className="h-9 flex-1 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15]"
+                placeholder={t("lobby.folderName")}
+                className="h-9 flex-1 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15]"
               />
               <button
                 type="button"
                 onClick={submitFolder}
-                className="h-9 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+                className="btn-primary h-9 rounded-md px-3 text-sm font-medium"
               >
-                Add
+                {t("lobby.add")}
               </button>
             </div>
           )}
@@ -164,7 +245,7 @@ export function Lobby({
               active={folderFilter === null}
               onClick={() => setFolderFilter(null)}
             >
-              All ({schedules.length})
+              {t("lobby.all", { n: schedules.length })}
             </FilterChip>
             {folders.map((f) => {
               const count = schedules.filter((s) => s.folderId === f.id).length;
@@ -182,7 +263,7 @@ export function Lobby({
                       if (folderFilter === f.id) setFolderFilter(null);
                       onDeleteFolder(f.id);
                     }}
-                    aria-label={`Delete folder ${f.name}`}
+                    aria-label={t("lobby.deleteFolder", { name: f.name })}
                     className="px-1 text-xs text-zinc-300 hover:text-red-500"
                   >
                     ✕
@@ -192,7 +273,7 @@ export function Lobby({
             })}
             {folders.length === 0 && !addingFolder && (
               <span className="text-xs text-zinc-400">
-                No folders yet — tap “New folder”.
+                {t("lobby.noFolders")}
               </span>
             )}
           </div>
@@ -202,10 +283,13 @@ export function Lobby({
       {/* Schedule grid */}
       <section>
         {visible.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-black/[.12] p-8 text-center text-sm text-zinc-400 dark:border-white/[.15]">
-            {schedules.length === 0
-              ? "No schedules yet. Tap + to create your first one."
-              : "No schedules match."}
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-black/[.12] p-8 text-center text-sm text-zinc-400 dark:border-white/[.15]">
+            {schedules.length === 0 && <Mascot size={88} />}
+            <p>
+              {schedules.length === 0
+                ? t("lobby.emptyNew")
+                : t("lobby.emptyNoMatch")}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -216,7 +300,7 @@ export function Lobby({
               return (
                 <article
                   key={s.id}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-black/[.08] bg-white shadow-sm transition-shadow hover:shadow-md dark:border-white/[.1] dark:bg-zinc-900"
+                  className="group flex flex-col overflow-hidden rounded-xl border border-black/[.08] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-300/60 dark:border-white/[.1] dark:bg-zinc-900"
                 >
                   {/* Colorful banner */}
                   <button
@@ -248,7 +332,7 @@ export function Lobby({
                             setRenamingId(null);
                           }
                         }}
-                        className="h-8 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.15]"
+                        className="h-8 rounded-md border border-black/[.1] bg-transparent px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15]"
                       />
                     ) : (
                       <button
@@ -272,10 +356,10 @@ export function Lobby({
                       <select
                         value={s.folderId ?? ""}
                         onChange={(e) => onMove(s.id, e.target.value || null)}
-                        aria-label="Move to folder"
+                        aria-label={t("lobby.moveToFolder")}
                         className="mr-auto rounded border border-black/[.1] bg-transparent px-1 py-0.5 text-xs text-zinc-500 outline-none dark:border-white/[.15]"
                       >
-                        <option value="">No folder</option>
+                        <option value="">{t("lobby.noFolder")}</option>
                         {folders.map((f) => (
                           <option key={f.id} value={f.id}>
                             {f.name}
@@ -288,15 +372,23 @@ export function Lobby({
                           setRenamingId(s.id);
                           setRenameValue(s.title);
                         }}
-                        aria-label="Rename"
+                        aria-label={t("lobby.rename")}
                         className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                       >
                         ✏️
                       </button>
                       <button
                         type="button"
+                        onClick={() => onDuplicate(s.id)}
+                        aria-label={t("lobby.duplicate")}
+                        className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300"
+                      >
+                        📋
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => onDelete(s.id)}
-                        aria-label="Delete schedule"
+                        aria-label={t("lobby.deleteSchedule")}
                         className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-red-600"
                       >
                         🗑
@@ -310,7 +402,27 @@ export function Lobby({
         )}
       </section>
 
+      {visits != null && (
+        <p className="pt-2 text-center text-xs text-zinc-400">
+          🌐 {t("common.entered", { n: visits.toLocaleString(locale) })}
+        </p>
+      )}
+
+      {showTour && <Tour steps={TOUR_STEPS} onDone={endTour} />}
+
+      {showChangePw && (
+        <ChangePassword onClose={() => setShowChangePw(false)} />
+      )}
       {showHowTo && <HowTo onClose={() => setShowHowTo(false)} />}
+      {confirmQuit && (
+        <ConfirmQuit
+          onCancel={() => setConfirmQuit(false)}
+          onConfirm={() => {
+            setConfirmQuit(false);
+            onDeleteAccount();
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -319,19 +431,22 @@ function ToolButton({
   children,
   onClick,
   active,
+  dataTour,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   active?: boolean;
+  dataTour?: string;
 }) {
   return (
     <button
       type="button"
+      data-tour={dataTour}
       onClick={onClick}
       className={`h-9 rounded-lg border px-3 text-sm font-medium transition-colors ${
         active
-          ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-900"
-          : "border-black/[.1] text-zinc-600 hover:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
+          ? "btn-primary border-transparent"
+          : "border-black/[.1] text-zinc-600 hover:border-indigo-400 hover:text-indigo-600 dark:border-white/[.15] dark:text-zinc-300"
       }`}
     >
       {children}
@@ -354,8 +469,8 @@ function FilterChip({
       onClick={onClick}
       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
         active
-          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-          : "bg-black/[.05] text-zinc-600 hover:bg-black/[.1] dark:bg-white/[.08] dark:text-zinc-300"
+          ? "btn-primary"
+          : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-white/[.08] dark:text-zinc-300"
       }`}
     >
       {children}
@@ -363,7 +478,132 @@ function FilterChip({
   );
 }
 
+function ConfirmQuit({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="flex w-full max-w-sm flex-col gap-3 rounded-2xl bg-white p-5 dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">{t("quit.title")}</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+          {t("quit.body")}
+        </p>
+        <div className="mt-1 flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-10 flex-1 rounded-lg border border-black/[.1] text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
+          >
+            {t("quit.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-10 flex-1 rounded-lg bg-red-600 text-sm font-medium text-white transition-colors hover:bg-red-700"
+          >
+            {t("quit.confirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChangePassword({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await changePassword(current, next);
+      setDone(true);
+      setTimeout(onClose, 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        className="flex w-full max-w-sm flex-col gap-3 rounded-2xl bg-white p-5 dark:bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">{t("pw.title")}</h2>
+        {done ? (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {t("pw.success")}
+          </p>
+        ) : (
+          <>
+            <PasswordInput
+              autoFocus
+              value={current}
+              onChange={setCurrent}
+              placeholder={t("pw.current")}
+              className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base outline-none focus:border-indigo-500 dark:border-white/[.15]"
+            />
+            <PasswordInput
+              value={next}
+              onChange={setNext}
+              placeholder={t("pw.new")}
+              className="h-11 rounded-lg border border-black/[.1] bg-transparent px-3 text-base outline-none focus:border-indigo-500 dark:border-white/[.15]"
+            />
+            {error && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
+                {error}
+              </p>
+            )}
+            <div className="mt-1 flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-10 flex-1 rounded-lg border border-black/[.1] text-sm font-medium text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
+              >
+                {t("pw.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !current || !next}
+                className="btn-primary h-10 flex-1 rounded-lg text-sm font-medium disabled:opacity-40"
+              >
+                {t("pw.save")}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
 function HowTo({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -373,29 +613,20 @@ function HowTo({ onClose }: { onClose: () => void }) {
         className="flex max-h-[80vh] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-2xl bg-white p-5 dark:bg-zinc-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold">How to use ScheduleMaster</h2>
-        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-zinc-600 dark:text-zinc-300">
-          <li>Tap the + button to start a new schedule survey.</li>
-          <li>
-            Fill in the blanks: fixed-time programs, flexible programs, and your
-            wants. Use Tab to move between blanks.
-          </li>
-          <li>Pick how busy you want your week, then press Done.</li>
-          <li>
-            ScheduleManager builds your week — fixed items stay put, and it fits
-            flexible items and wants into the best slots.
-          </li>
-          <li>
-            Back here in the lobby, search your schedules, rename them, and use
-            folders to organize.
-          </li>
+        <h2 className="text-lg font-semibold">{t("howto.title")}</h2>
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-zinc-600 marker:font-bold marker:text-indigo-500 dark:text-zinc-300">
+          <li>{t("howto.s1")}</li>
+          <li>{t("howto.s2")}</li>
+          <li>{t("howto.s3")}</li>
+          <li>{t("howto.s4")}</li>
+          <li>{t("howto.s5")}</li>
         </ol>
         <button
           type="button"
           onClick={onClose}
-          className="mt-1 h-10 rounded-lg bg-zinc-900 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+          className="btn-primary mt-1 h-10 rounded-lg text-sm font-medium"
         >
-          Got it
+          {t("howto.got")}
         </button>
       </div>
     </div>

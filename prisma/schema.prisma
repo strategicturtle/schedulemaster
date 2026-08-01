@@ -10,6 +10,12 @@ datasource db {
   provider = "postgresql"
 }
 
+// Site-wide counters (e.g. how many times the website has been entered).
+model Stat {
+  key   String @id
+  value Int    @default(0)
+}
+
 // Accounts, sessions, and the per-user schedules + folders they own.
 
 model User {

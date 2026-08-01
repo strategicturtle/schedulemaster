@@ -87,6 +87,39 @@ export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" });
 }
 
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch("/api/auth/account", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete account.");
+}
+
+export async function changePassword(
+  current: string,
+  next: string,
+): Promise<void> {
+  const res = await fetch("/api/auth/password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ current, next }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? "Failed to change password.");
+  }
+}
+
+// ---- Stats ----------------------------------------------------------------
+
+// Record a site entry and return the new total (null on failure).
+export async function recordVisit(): Promise<number | null> {
+  try {
+    const res = await fetch("/api/stats/visit", { method: "POST" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { visits: number }).visits;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Schedules ------------------------------------------------------------
 
 export async function fetchSchedules(): Promise<SavedSchedule[]> {
