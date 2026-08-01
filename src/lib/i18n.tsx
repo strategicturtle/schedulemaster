@@ -118,7 +118,7 @@ const EN: Dict = {
     "You pick the day. ScheduleManager generates only the duration (and the time of day) based on how productive and healthy the want is.",
   "survey.addAnother": "+ Add another",
   "survey.blanksHint":
-    "Fill in the blanks — Tab jumps to the next blank, or click a blank to type. Leave blank if none.",
+    "Fill in the blanks — Tab jumps to the next blank, or click a blank to type. Leave blank if none. For days, “sat and sun” uses both, while “sat or sun” lets ScheduleManager pick one.",
   "survey.busy.title": "What schedule busyness do you want?",
   "survey.busy.middle.label": "In the middle",
   "survey.busy.middle.desc": "A balanced day.",
@@ -301,7 +301,7 @@ const ES: Dict = {
     "Tú eliges el día. ScheduleManager genera solo la duración (y la hora del día) según lo productivo y saludable que sea el deseo.",
   "survey.addAnother": "+ Añadir otro",
   "survey.blanksHint":
-    "Rellena los espacios — Tab salta al siguiente, o toca un espacio para escribir. Déjalo vacío si no hay.",
+    "Rellena los espacios — Tab salta al siguiente, o toca un espacio para escribir. Déjalo vacío si no hay. En los días, «sáb y dom» usa ambos, y «sáb o dom» deja que ScheduleManager elija uno.",
   "survey.busy.title": "¿Qué nivel de ocupación quieres?",
   "survey.busy.middle.label": "Intermedio",
   "survey.busy.middle.desc": "Un día equilibrado.",
@@ -480,7 +480,7 @@ const FR: Dict = {
     "Tu choisis le jour. ScheduleManager génère seulement la durée (et l’heure) selon à quel point l’envie est productive et saine.",
   "survey.addAnother": "+ Ajouter",
   "survey.blanksHint":
-    "Remplis les blancs — Tab passe au suivant, ou clique sur un blanc pour écrire. Laisse vide si aucun.",
+    "Remplis les blancs — Tab passe au suivant, ou clique sur un blanc pour écrire. Laisse vide si aucun. Pour les jours, « sam et dim » utilise les deux, « sam ou dim » laisse ScheduleManager en choisir un.",
   "survey.busy.title": "Quel niveau d’occupation veux-tu ?",
   "survey.busy.middle.label": "Au milieu",
   "survey.busy.middle.desc": "Une journée équilibrée.",
@@ -654,7 +654,8 @@ const ZH: Dict = {
   "survey.wants.note":
     "你选择哪天。ScheduleManager 仅根据愿望的效率和健康程度生成时长（和时间）。",
   "survey.addAnother": "+ 再添加一个",
-  "survey.blanksHint": "填空——Tab 跳到下一个空格，或点击空格输入。没有就留空。",
+  "survey.blanksHint":
+    "填空——Tab 跳到下一个空格，或点击空格输入。没有就留空。填星期时，“六和日”两天都排，“六或日”让 ScheduleManager 选一天。",
   "survey.busy.title": "你想要多忙的日程？",
   "survey.busy.middle.label": "适中",
   "survey.busy.middle.desc": "平衡的一天。",

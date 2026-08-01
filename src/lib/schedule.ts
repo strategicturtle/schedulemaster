@@ -66,7 +66,35 @@ const DAY_ALIASES: Record<string, number> = {
   fri: 4, friday: 4,
   sat: 5, saturday: 5,
   sun: 6, sunday: 6,
+  // Spanish
+  lun: 0, lunes: 0,
+  mar: 1, martes: 1,
+  mie: 2, miercoles: 2,
+  jue: 3, jueves: 3,
+  vie: 4, viernes: 4,
+  sab: 5, sabado: 5,
+  dom: 6, domingo: 6,
+  // French ("dim"/"dom" both mean Sunday, so the overlap is harmless)
+  lundi: 0,
+  mardi: 1,
+  mer: 2, mercredi: 2,
+  jeu: 3, jeudi: 3,
+  ven: 4, vendredi: 4,
+  sam: 5, samedi: 5,
+  dim: 6, dimanche: 6,
 };
+
+// Chinese day names (週一/星期二/周日…) — matched separately since they
+// aren't separated by non-letter characters.
+const CJK_DAYS: [RegExp, number][] = [
+  [/[周週星]期?[一1]/, 0],
+  [/[周週星]期?[二2]/, 1],
+  [/[周週星]期?[三3]/, 2],
+  [/[周週星]期?[四4]/, 3],
+  [/[周週星]期?[五5]/, 4],
+  [/[周週星]期?[六6]/, 5],
+  [/[周週星]期?[日天]/, 6],
+];
 
 const DEFAULT_WINDOW = { start: 7 * 60, end: 21 * 60 }; // 7:00–21:00
 
@@ -81,19 +109,56 @@ export function isAnyDay(raw: string): boolean {
   );
 }
 
+/** Lowercase and strip accents so "miércoles" matches "miercoles". */
+function normalize(raw: string): string {
+  return (raw || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 /** Parse a free-text day field into weekday indices (0=Mon … 6=Sun). */
 export function parseDays(raw: string): number[] {
-  const s = (raw || "").toLowerCase();
+  const s = normalize(raw);
   if (!s.trim()) return [];
-  if (/every|daily|all\s*days?|each\s*day/.test(s)) return [0, 1, 2, 3, 4, 5, 6];
-  if (/weekday/.test(s)) return [0, 1, 2, 3, 4];
-  if (/weekend/.test(s)) return [5, 6];
+  if (/every|daily|all\s*days?|each\s*day|todos|cada\s*dia|chaque\s*jour|tous\s*les\s*jours|每天|每日/.test(s))
+    return [0, 1, 2, 3, 4, 5, 6];
+  if (/weekday|entre\s*semana|semaine|工作日|平日/.test(s))
+    return [0, 1, 2, 3, 4];
+  if (/weekend|fin\s*de\s*semana|week-?end|周末|週末/.test(s)) return [5, 6];
 
   const found = new Set<number>();
   for (const token of s.split(/[^a-z]+/)) {
     if (token in DAY_ALIASES) found.add(DAY_ALIASES[token]);
   }
+  for (const [re, idx] of CJK_DAYS) if (re.test(s)) found.add(idx);
+  // Bare CJK numerals ("六或日"), only when the field is nothing but day
+  // characters and separators — so this can't misfire on other text.
+  if (!found.size && /^[一二三四五六日天1-6或和、,\/\s]+$/.test(s.trim())) {
+    const BARE: [RegExp, number][] = [
+      [/[一1]/, 0], [/[二2]/, 1], [/[三3]/, 2], [/[四4]/, 3],
+      [/[五5]/, 4], [/[六6]/, 5], [/[日天]/, 6],
+    ];
+    for (const [re, idx] of BARE) if (re.test(s)) found.add(idx);
+  }
   return [...found].sort((a, b) => a - b);
+}
+
+/**
+ * Parse the day field, distinguishing "all of these" from "one of these".
+ * Writing days with "or"/"either"/"/" (e.g. "sat or sun") means SM should
+ * pick a single day among them; otherwise every listed day is used.
+ */
+export function parseDayChoice(raw: string): {
+  days: number[];
+  pickOne: boolean;
+} {
+  const s = normalize(raw);
+  const days = parseDays(s);
+  // "or" in each supported language (es: o/u, fr: ou, zh: 或/还是), plus "/".
+  const pickOne =
+    /\bor\b|\beither\b|\bo\b|\bu\b|\bou\b|或|还是|\//.test(s) && days.length > 1;
+  return { days, pickOne };
 }
 
 /**
@@ -341,13 +406,29 @@ export function generateWeek(answers: SurveyAnswers): Week {
   let anyCursor = 0;
   const pickAnyDay = () => [anyCursor++ % 7];
 
+  // Total scheduled minutes on a day so far — used to pick the least-busy
+  // option for an "or" day choice (which also spreads several such entries).
+  const dayLoad = (d: number) =>
+    week[d].reduce((sum, b) => sum + (b.endMin - b.startMin), 0);
+  const pickOneDay = (days: number[]) =>
+    days.reduce((best, d) => (dayLoad(d) < dayLoad(best) ? d : best), days[0]);
+
+  // Resolve a day field to the day(s) to place on. "any" → one cycled day;
+  // "sat or sun" → one least-busy day among them; otherwise every listed day
+  // (falling back to `fallback` when nothing parses).
+  const resolveDays = (raw: string, fallback: number[]): number[] => {
+    if (isAnyDay(raw)) return pickAnyDay();
+    const { days, pickOne } = parseDayChoice(raw);
+    if (!days.length) return fallback;
+    return pickOne ? [pickOneDay(days)] : days;
+  };
+
   // 1) Fixed-time programs — placed exactly on their day(s).
   for (const entry of answers.fixedTime) {
     const range = timeRange(entry);
     if (!range) continue;
     const title = (entry.program || "").trim() || "Program";
-    const days = isAnyDay(entry.day) ? pickAnyDay() : parseDays(entry.day);
-    const targets = days.length ? days : [0, 1, 2, 3, 4]; // default weekdays
+    const targets = resolveDays(entry.day, [0, 1, 2, 3, 4]); // default weekdays
     for (const d of targets) {
       week[d].push({
         id: nid(),
@@ -446,8 +527,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
     const mins = parseInt((entry.durationMin || "").trim(), 10);
     const duration =
       Number.isNaN(mins) || mins <= 0 ? 60 : Math.min(mins, 12 * 60);
-    const days = isAnyDay(entry.day) ? pickAnyDay() : parseDays(entry.day);
-    const targets = days.length ? days : [0, 1, 2, 3, 4];
+    const targets = resolveDays(entry.day, [0, 1, 2, 3, 4]);
     const w = windowFor(entry.ampm);
     const base = clamp(preferredStart(named, scoreWant(named).productivity), w.start, w.end);
     for (const d of targets) {
@@ -494,8 +574,7 @@ export function generateWeek(answers: SurveyAnswers): Week {
     // focus → morning, leisure → evening), unless the user pinned AM/PM.
     const w = windowFor(entry.ampm);
     const base = clamp(preferredStart(title, productivity), w.start, w.end);
-    const parsed = isAnyDay(entry.day) ? pickAnyDay() : parseDays(entry.day);
-    const days = parsed.length ? parsed : [5, 6];
+    const days = resolveDays(entry.day, [5, 6]);
     for (const d of days) {
       const from = clamp(stagger(d, base), w.start, w.end);
       const slot = findSlot(week[d], duration, w, from, gap);
