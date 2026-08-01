@@ -25,6 +25,9 @@ export type SurveyAnswers = {
   flexible: Entry[];
   wants: Entry[];
   busyness: Busyness | null;
+  // Built by hand instead of by ScheduleManager: there is no survey behind
+  // it, so the week is never regenerated from these answers.
+  manual?: boolean;
   // ISO date ("YYYY-MM-DD") of the Monday of the week this schedule is for.
   // Optional so schedules created before this feature still parse.
   weekStart?: string;

@@ -128,11 +128,18 @@ export async function fetchSchedules(): Promise<SavedSchedule[]> {
   return body.schedules.map(toSchedule);
 }
 
-export async function createSchedule(answers: SurveyAnswers): Promise<SavedSchedule> {
+/**
+ * Create a schedule. Pass `blocks` to copy an exact week (duplicating);
+ * pass answers with `manual: true` for a blank, hand-built schedule.
+ */
+export async function createSchedule(
+  answers: SurveyAnswers,
+  blocks?: Week,
+): Promise<SavedSchedule> {
   const res = await fetch("/api/schedules", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify(blocks ? { answers, blocks } : { answers }),
   });
   return toSchedule((await jsonOrThrow<{ schedule: Parameters<typeof toSchedule>[0] }>(res)).schedule);
 }

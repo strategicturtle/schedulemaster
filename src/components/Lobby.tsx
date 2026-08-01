@@ -54,6 +54,7 @@ export function Lobby({
   onLogout,
   onDeleteAccount,
   onNew,
+  onNewBlank,
   onOpen,
   onDelete,
   onRename,
@@ -69,6 +70,8 @@ export function Lobby({
   onLogout: () => void;
   onDeleteAccount: () => void;
   onNew: () => void;
+  /** Create a blank schedule and build it by hand (no ScheduleManager). */
+  onNewBlank: () => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
@@ -203,6 +206,13 @@ export function Lobby({
 
       {/* Three buttons */}
       <div className="flex flex-wrap gap-2">
+        <ToolButton
+          dataTour="newBlank"
+          title={t("lobby.blankTip")}
+          onClick={onNewBlank}
+        >
+          ✏️ {t("lobby.newBlank")}
+        </ToolButton>
         <ToolButton dataTour="howto" onClick={() => setShowHowTo(true)}>
           {t("lobby.howto")}
         </ToolButton>
@@ -438,16 +448,19 @@ function ToolButton({
   onClick,
   active,
   dataTour,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   active?: boolean;
   dataTour?: string;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       data-tour={dataTour}
+      title={title}
       onClick={onClick}
       className={`h-9 rounded-lg border px-3 text-sm font-medium transition-colors ${
         active

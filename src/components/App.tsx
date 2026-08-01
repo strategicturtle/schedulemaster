@@ -23,6 +23,16 @@ import {
   type SavedSchedule,
 } from "@/lib/storage";
 
+// ISO "YYYY-MM-DD" of the Monday on or before `date` — a blank schedule is
+// anchored to the current week so its columns get dates.
+function mondayOf(date: Date): string {
+  const d = new Date(date);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 type View =
   | { name: "lobby" }
   | { name: "survey"; editingId: string | null; initial: Answers | null }
@@ -115,6 +125,7 @@ export function App() {
         week={week}
         title={schedule.title}
         weekStart={schedule.answers.weekStart}
+        manual={schedule.answers.manual}
         onBack={() => setView({ name: "lobby" })}
         onEdit={() =>
           setView({
@@ -145,6 +156,19 @@ export function App() {
       onLogout={onLogout}
       onDeleteAccount={onDeleteAccount}
       onNew={() => setView({ name: "survey", editingId: null, initial: null })}
+      onNewBlank={async () => {
+        // Blank week, built by hand — ScheduleManager generates nothing.
+        const created = await createSchedule({
+          fixedTime: [],
+          flexible: [],
+          wants: [],
+          busyness: null,
+          manual: true,
+          weekStart: mondayOf(new Date()),
+        });
+        setSchedules((list) => [created, ...list]);
+        setView({ name: "schedule", id: created.id });
+      }}
       onOpen={(id) => setView({ name: "schedule", id })}
       onDelete={async (id) => {
         await deleteSchedule(id);
@@ -157,7 +181,12 @@ export function App() {
       onDuplicate={async (id) => {
         const src = schedules.find((s) => s.id === id);
         if (!src) return;
-        const created = await createSchedule(src.answers);
+        // Copy the week as it stands (including hand edits) rather than
+        // regenerating it — a manual schedule has nothing to regenerate from.
+        const created = await createSchedule(
+          src.answers,
+          src.blocks ?? undefined,
+        );
         const titled = await updateSchedule(created.id, {
           title: src.title,
           folderId: src.folderId,

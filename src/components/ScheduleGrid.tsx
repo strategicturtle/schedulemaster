@@ -104,6 +104,7 @@ export function ScheduleGrid({
   week,
   title,
   weekStart,
+  manual = false,
   onBack,
   onEdit,
   onChange,
@@ -111,6 +112,8 @@ export function ScheduleGrid({
   week: Week;
   title?: string;
   weekStart?: string;
+  /** Hand-built schedule: no survey behind it, so nothing regenerates. */
+  manual?: boolean;
   onBack: () => void;
   onEdit: () => void;
   onChange: (week: Week) => void;
@@ -386,21 +389,28 @@ export function ScheduleGrid({
           <h1 className="max-w-[60vw] truncate text-base font-semibold tracking-tight">
             {displayTitle}
           </h1>
-          <p className="text-xs text-zinc-400">{t("grid.generatedBy")}</p>
+          <p className="text-xs text-zinc-400">
+            {manual ? t("grid.builtByYou") : t("grid.generatedBy")}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={t("grid.edit")}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-base text-zinc-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-300"
-        >
-          ✏️
-        </button>
+        {/* A manual schedule has no survey to edit — editing one would
+            regenerate the week and wipe what was built by hand. */}
+        {manual ? (
+          <span className="h-10 w-10" />
+        ) : (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={t("grid.edit")}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-base text-zinc-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-300"
+          >
+            ✏️
+          </button>
+        )}
       </header>
 
       {/* View toggle + stats toggle */}
-      {!isEmpty && (
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg border border-black/[.1] p-0.5 text-xs font-medium dark:border-white/[.15]">
             <button
               type="button"
@@ -449,8 +459,7 @@ export function ScheduleGrid({
               </button>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Stats panel */}
       {!isEmpty && showStats && (
@@ -473,16 +482,18 @@ export function ScheduleGrid({
             {t(`grid.legend.${k}`)}
           </span>
         ))}
-        {!isEmpty && <span className="text-zinc-400">{t("grid.hint2")}</span>}
+        <span className="text-zinc-400">{t("grid.hint2")}</span>
       </div>
 
-      {isEmpty ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-black/[.08] p-8 text-center text-sm text-zinc-400 dark:border-white/[.1]">
-          <Mascot size={88} />
-          <p>{t("grid.empty")}</p>
+      {/* The grid always renders, even when empty, so blocks can be added to
+          it by double-tapping a slot (the only way to build a manual week). */}
+      {isEmpty && (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-black/[.08] p-6 text-center text-sm text-zinc-400 dark:border-white/[.1]">
+          <Mascot size={72} />
+          <p>{manual ? t("grid.emptyManual") : t("grid.empty")}</p>
         </div>
-      ) : (
-        <div
+      )}
+      <div
           className="overflow-x-auto rounded-xl border border-black/[.08] bg-white/60 dark:border-white/[.1] dark:bg-zinc-900/40"
           onPointerDown={(e) => {
             if (!(e.target as HTMLElement).closest("[data-block]")) {
@@ -622,8 +633,7 @@ export function ScheduleGrid({
               </div>
             ))}
           </div>
-        </div>
-      )}
+      </div>
 
       {/* Selected-block action bar: rename / done / delete */}
       {selected && (
