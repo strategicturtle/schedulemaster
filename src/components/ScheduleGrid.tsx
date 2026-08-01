@@ -40,27 +40,41 @@ const MEAL_TITLES = new Set([
   "block.dinner",
 ]);
 
-// Short M/D labels for each weekday of the chosen week, or [] if none set.
-function weekDates(weekStart?: string): string[] {
+// Day offsets are measured from the schedule's anchor Monday. When the week
+// is shown starting on a later day (e.g. Sunday), that first column is the
+// day *before* the anchor Monday, so the whole range shifts back.
+const firstOffset = (weekStartDay: number) =>
+  weekStartDay === 0 ? 0 : weekStartDay - 7;
+
+// Days from the anchor Monday for day index d (0 = Mon … 6 = Sun).
+function dayOffset(d: number, weekStartDay: number): number {
+  const position = (d - weekStartDay + 7) % 7;
+  return firstOffset(weekStartDay) + position;
+}
+
+// Short M/D labels per day index (0 = Mon … 6 = Sun), or [] if no week set.
+function weekDates(weekStart: string | undefined, weekStartDay: number): string[] {
   if (!weekStart) return [];
   const base = new Date(`${weekStart}T00:00:00`);
   if (Number.isNaN(base.getTime())) return [];
-  return DAY_LABELS.map((_, i) => {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+  return DAY_LABELS.map((_, d) => {
+    const date = new Date(base);
+    date.setDate(base.getDate() + dayOffset(d, weekStartDay));
+    return `${date.getMonth() + 1}/${date.getDate()}`;
   });
 }
 
-// Which column (0–6) is today, or -1 if today isn't in this week.
-function todayIndex(weekStart?: string): number {
+// Which day index (0–6) is today, or -1 if today isn't in the shown week.
+function todayIndex(weekStart: string | undefined, weekStartDay: number): number {
   if (!weekStart) return -1;
   const base = new Date(`${weekStart}T00:00:00`);
   if (Number.isNaN(base.getTime())) return -1;
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diff = Math.round((today.getTime() - base.getTime()) / 86400000);
-  return diff >= 0 && diff <= 6 ? diff : -1;
+  const lo = firstOffset(weekStartDay);
+  if (diff < lo || diff > lo + 6) return -1;
+  return (weekStartDay + (diff - lo)) % 7;
 }
 
 const snap = (min: number) => Math.round(min / SNAP) * SNAP;
@@ -101,10 +115,10 @@ export function ScheduleGrid({
   onEdit: () => void;
   onChange: (week: Week) => void;
 }) {
-  const { t } = useI18n();
+  const { t, weekStartDay } = useI18n();
   const displayTitle = title ?? t("grid.defaultTitle");
-  const dayDates = weekDates(weekStart);
-  const today = todayIndex(weekStart);
+  const dayDates = weekDates(weekStart, weekStartDay);
+  const today = todayIndex(weekStart, weekStartDay);
   const { start, end } = weekBounds(week);
   const totalMin = end - start;
   const height = totalMin * PX_PER_MIN;
@@ -113,10 +127,18 @@ export function ScheduleGrid({
 
   const isEmpty = week.every((d) => d.length === 0);
 
-  // Week vs single-day view. Day view opens on today (or Monday).
+  // Week vs single-day view. Day view opens on today (or the week's first day).
   const [view, setView] = useState<"week" | "day">("week");
-  const [dayIndex, setDayIndex] = useState(today >= 0 ? today : 0);
-  const visibleDays = view === "day" ? [dayIndex] : [0, 1, 2, 3, 4, 5, 6];
+  const [dayIndex, setDayIndex] = useState(
+    today >= 0 ? today : weekStartDay,
+  );
+  // Columns are rotated so the user's chosen start day comes first. Stored
+  // schedules always keep index 0 = Monday, so this is display-only.
+  const weekOrder = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => (weekStartDay + i) % 7),
+    [weekStartDay],
+  );
+  const visibleDays = view === "day" ? [dayIndex] : weekOrder;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);

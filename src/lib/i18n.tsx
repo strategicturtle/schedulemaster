@@ -40,6 +40,8 @@ const EN: Dict = {
   "login.newHere": "New to ScheduleMaster?",
   "common.entered": "Entered {n} times",
   "lang.label": "Language",
+  "weekStart.label": "Week starts on",
+  "weekStart.starts": "Starts {day}",
   // Onboarding tour
   "tour.howto": "Tap “How to use” any time to learn ScheduleMaster.",
   "tour.new": "Tap + to create a brand-new schedule.",
@@ -227,6 +229,8 @@ const ES: Dict = {
   "login.newHere": "¿Nuevo en ScheduleMaster?",
   "common.entered": "Visitado {n} veces",
   "lang.label": "Idioma",
+  "weekStart.label": "La semana empieza el",
+  "weekStart.starts": "Empieza {day}",
   "tour.howto": "Toca «Cómo usar» cuando quieras para aprender ScheduleMaster.",
   "tour.new": "Toca + para crear un horario nuevo.",
   "tour.newFolder": "Crea una carpeta para agrupar tus horarios.",
@@ -406,6 +410,8 @@ const FR: Dict = {
   "login.newHere": "Nouveau sur ScheduleMaster ?",
   "common.entered": "Visité {n} fois",
   "lang.label": "Langue",
+  "weekStart.label": "La semaine commence le",
+  "weekStart.starts": "Commence {day}",
   "tour.howto": "Touche « Mode d’emploi » à tout moment pour apprendre ScheduleMaster.",
   "tour.new": "Touche + pour créer un nouvel emploi du temps.",
   "tour.newFolder": "Crée un dossier pour regrouper tes emplois du temps.",
@@ -585,6 +591,8 @@ const ZH: Dict = {
   "login.newHere": "第一次使用 ScheduleMaster？",
   "common.entered": "已访问 {n} 次",
   "lang.label": "语言",
+  "weekStart.label": "每周开始于",
+  "weekStart.starts": "{day}开始",
   "tour.howto": "随时点击“使用说明”来学习 ScheduleMaster。",
   "tour.new": "点击 + 创建一个新日程。",
   "tour.newFolder": "创建文件夹来整理你的日程。",
@@ -763,6 +771,10 @@ type I18n = {
   t: (key: string, vars?: Record<string, string | number>) => string;
   theme: Theme;
   toggleTheme: () => void;
+  // Which weekday the grid starts on (0 = Mon … 6 = Sun). Display only —
+  // stored schedules always keep index 0 = Monday.
+  weekStartDay: number;
+  setWeekStartDay: (d: number) => void;
 };
 
 const I18nContext = createContext<I18n | null>(null);
@@ -778,11 +790,18 @@ function applyTheme(theme: Theme) {
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
   const [theme, setTheme] = useState<Theme>("light");
+  const [weekStartDay, setWeekStartDayState] = useState(0); // Monday
 
   // Restore the saved language + theme on mount (after hydration).
   useEffect(() => {
     const saved = localStorage.getItem("sm_lang");
     if (isLang(saved)) setLangState(saved);
+    const savedWeekStart = parseInt(
+      localStorage.getItem("sm_week_start") ?? "",
+      10,
+    );
+    if (savedWeekStart >= 0 && savedWeekStart <= 6)
+      setWeekStartDayState(savedWeekStart);
     const savedTheme = localStorage.getItem("sm_theme");
     const initial: Theme =
       savedTheme === "dark" || savedTheme === "light"
@@ -817,6 +836,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setWeekStartDay = useCallback((d: number) => {
+    setWeekStartDayState(d);
+    try {
+      localStorage.setItem("sm_week_start", String(d));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>) =>
       interpolate(STRINGS[lang][key] ?? EN[key] ?? key, vars),
@@ -825,7 +853,16 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <I18nContext.Provider
-      value={{ lang, setLang, locale: LOCALES[lang], t, theme, toggleTheme }}
+      value={{
+        lang,
+        setLang,
+        locale: LOCALES[lang],
+        t,
+        theme,
+        toggleTheme,
+        weekStartDay,
+        setWeekStartDay,
+      }}
     >
       {children}
     </I18nContext.Provider>
@@ -850,6 +887,36 @@ export function useI18n(): I18n {
   const ctx = useContext(I18nContext);
   if (!ctx) throw new Error("useI18n must be used within I18nProvider");
   return ctx;
+}
+
+const WEEK_START_KEYS = [
+  "day.mon",
+  "day.tue",
+  "day.wed",
+  "day.thu",
+  "day.fri",
+  "day.sat",
+  "day.sun",
+];
+
+/** Pick which weekday the schedule grid starts on. */
+export function WeekStartSwitcher({ className = "" }: { className?: string }) {
+  const { weekStartDay, setWeekStartDay, t } = useI18n();
+  return (
+    <select
+      aria-label={t("weekStart.label")}
+      title={t("weekStart.label")}
+      value={weekStartDay}
+      onChange={(e) => setWeekStartDay(Number(e.target.value))}
+      className={`h-8 rounded-lg border border-black/[.1] bg-transparent px-2 text-xs text-zinc-600 outline-none focus:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300 ${className}`}
+    >
+      {WEEK_START_KEYS.map((key, i) => (
+        <option key={key} value={i}>
+          {t("weekStart.starts", { day: t(key) })}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export function LanguageSwitcher({ className = "" }: { className?: string }) {
