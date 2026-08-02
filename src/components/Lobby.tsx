@@ -4,12 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { changePassword, type Folder, type SavedSchedule } from "@/lib/storage";
 import { Mascot } from "@/components/Mascot";
 import { PasswordInput } from "@/components/PasswordInput";
-import {
-  LanguageSwitcher,
-  ThemeToggle,
-  WeekStartSwitcher,
-  useI18n,
-} from "@/lib/i18n";
+import { LanguageSwitcher, ThemeToggle, useI18n } from "@/lib/i18n";
 import { Tour, type TourStep } from "@/components/Tour";
 
 const TOUR_STEPS: TourStep[] = [
@@ -152,7 +147,6 @@ export function Lobby({
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <div className="flex items-center gap-1.5">
             <ThemeToggle />
-            <WeekStartSwitcher />
             <span data-tour="lang">
               <LanguageSwitcher />
             </span>

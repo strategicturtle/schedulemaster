@@ -9,7 +9,7 @@ import {
   type Week,
 } from "@/lib/schedule";
 import { Mascot } from "@/components/Mascot";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, WeekStartSwitcher } from "@/lib/i18n";
 
 const DAY_KEYS = [
   "day.mon",
@@ -104,21 +104,27 @@ export function ScheduleGrid({
   week,
   title,
   weekStart,
+  weekStartDay = 0,
   manual = false,
   onBack,
   onEdit,
   onChange,
+  onWeekStartDayChange,
 }: {
   week: Week;
   title?: string;
   weekStart?: string;
+  /** Which weekday this schedule's grid starts on (0 = Mon … 6 = Sun). */
+  weekStartDay?: number;
   /** Hand-built schedule: no survey behind it, so nothing regenerates. */
   manual?: boolean;
   onBack: () => void;
   onEdit: () => void;
   onChange: (week: Week) => void;
+  /** Change this schedule's start day (manual schedules have no survey). */
+  onWeekStartDayChange?: (d: number) => void;
 }) {
-  const { t, weekStartDay } = useI18n();
+  const { t } = useI18n();
   const displayTitle = title ?? t("grid.defaultTitle");
   const dayDates = weekDates(weekStart, weekStartDay);
   const today = todayIndex(weekStart, weekStartDay);
@@ -430,6 +436,13 @@ export function ScheduleGrid({
               {t("grid.day")}
             </button>
           </div>
+          {/* Manual schedules have no survey, so the start day is set here. */}
+          {manual && onWeekStartDayChange && (
+            <WeekStartSwitcher
+              value={weekStartDay}
+              onChange={onWeekStartDayChange}
+            />
+          )}
           <button
             type="button"
             onClick={() => setShowStats((v) => !v)}

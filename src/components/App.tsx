@@ -6,6 +6,7 @@ import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Lobby } from "@/components/Lobby";
 import { Login } from "@/components/Login";
 import { generateWeek } from "@/lib/schedule";
+import { autoWeekStartDay } from "@/lib/i18n";
 import {
   createFolder,
   createSchedule,
@@ -125,6 +126,7 @@ export function App() {
         week={week}
         title={schedule.title}
         weekStart={schedule.answers.weekStart}
+        weekStartDay={schedule.answers.weekStartDay ?? 0}
         manual={schedule.answers.manual}
         onBack={() => setView({ name: "lobby" })}
         onEdit={() =>
@@ -134,6 +136,13 @@ export function App() {
             initial: schedule.answers,
           })
         }
+        onWeekStartDayChange={(d) => {
+          const answers = { ...schedule.answers, weekStartDay: d };
+          setSchedules((list) =>
+            list.map((s) => (s.id === schedule.id ? { ...s, answers } : s)),
+          );
+          updateSchedule(schedule.id, { answers }).catch(() => {});
+        }}
         onChange={(newWeek) => {
           // Optimistic: show the move immediately, persist in the background.
           setSchedules((list) =>
@@ -165,6 +174,8 @@ export function App() {
           busyness: null,
           manual: true,
           weekStart: mondayOf(new Date()),
+          // The site picks the start day from this visitor's region.
+          weekStartDay: autoWeekStartDay(),
         });
         setSchedules((list) => [created, ...list]);
         setView({ name: "schedule", id: created.id });

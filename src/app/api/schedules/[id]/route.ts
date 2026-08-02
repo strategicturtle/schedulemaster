@@ -28,8 +28,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
       ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.folderId !== undefined ? { folderId: patch.folderId } : {}),
       // Changing the survey regenerates the week (discards manual moves).
+      // A hand-built schedule has no survey, so its week is left alone —
+      // regenerating would wipe everything the user built.
       ...(patch.answers !== undefined
-        ? { answers: patch.answers, blocks: generateWeek(patch.answers) }
+        ? patch.answers.manual
+          ? { answers: patch.answers }
+          : { answers: patch.answers, blocks: generateWeek(patch.answers) }
         : {}),
       // A drag persists just the new block positions.
       ...(patch.blocks !== undefined ? { blocks: patch.blocks } : {}),

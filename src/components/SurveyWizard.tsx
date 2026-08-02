@@ -116,6 +116,7 @@ export type Answers = {
   wants: Entry[];
   busyness: Busyness | null;
   weekStart?: string; // ISO "YYYY-MM-DD" of the chosen week's Monday
+  weekStartDay?: number; // which weekday the grid starts on (0 = Mon … 6 = Sun)
   routineSubjects?: string[]; // block.* keys to fill the routine with
   routinesPerDay?: string; // rough count of routine activities per day
   school?: {
@@ -135,6 +136,11 @@ export type Answers = {
   wake?: { h: string; m: string };
   sleep?: { h: string; m: string };
 };
+
+// Day options for the "week starts on" question (0 = Mon … 6 = Sun).
+const DAY_START_KEYS = [
+  "day.mon", "day.tue", "day.wed", "day.thu", "day.fri", "day.sat", "day.sun",
+];
 
 const WEEKS_AHEAD = 104; // ~2 years of weeks to choose from
 
@@ -178,6 +184,7 @@ function initAnswers(): Answers {
     wants: [emptyEntry(BLANK_STEPS[2].fields)],
     busyness: null,
     weekStart: isoDate(mondayOf(new Date())),
+    weekStartDay: 0,
     routineSubjects: [],
     routinesPerDay: "",
     school: { enabled: false, startH: "", startM: "", endH: "", endM: "" },
@@ -726,6 +733,30 @@ export function SurveyWizard({
           </select>
           <p className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
             {t("survey.week.note")}
+          </p>
+
+          <h2 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">
+            {t("survey.weekStart.title")}
+          </h2>
+          <select
+            value={answers.weekStartDay ?? 0}
+            onChange={(e) =>
+              setAnswers((a) => ({
+                ...a,
+                weekStartDay: Number(e.target.value),
+              }))
+            }
+            aria-label={t("survey.weekStart.title")}
+            className="h-12 w-full rounded-xl border border-black/[.1] bg-white px-3 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15] dark:bg-zinc-900 dark:focus:border-indigo-400"
+          >
+            {DAY_START_KEYS.map((key, i) => (
+              <option key={key} value={i}>
+                {t("weekStart.starts", { day: t(key) })}
+              </option>
+            ))}
+          </select>
+          <p className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+            {t("survey.weekStart.note")}
           </p>
         </div>
       )}

@@ -28,6 +28,10 @@ export type SurveyAnswers = {
   // Built by hand instead of by ScheduleManager: there is no survey behind
   // it, so the week is never regenerated from these answers.
   manual?: boolean;
+  // Which weekday this schedule's grid starts on (0 = Mon … 6 = Sun). Set
+  // per schedule, so each one can differ. Display only — the stored week
+  // always keeps index 0 = Monday.
+  weekStartDay?: number;
   // ISO date ("YYYY-MM-DD") of the Monday of the week this schedule is for.
   // Optional so schedules created before this feature still parse.
   weekStart?: string;

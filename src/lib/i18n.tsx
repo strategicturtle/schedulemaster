@@ -129,6 +129,8 @@ const EN: Dict = {
   "survey.busy.loose.label": "Loose",
   "survey.busy.loose.desc": "Plenty of breathing room.",
   "survey.week.title": "Which week is this schedule for?",
+  "survey.weekStart.title": "Which day does your week start on?",
+  "survey.weekStart.note": "This only changes the order of the columns when you look at the schedule.",
   "survey.week.of": "Week of {date}",
   "survey.week.note":
     "Pick any week from now through the next two years. The schedule keeps the same weekly pattern — this just dates the days when you view it.",
@@ -318,6 +320,8 @@ const ES: Dict = {
   "survey.busy.loose.label": "Tranquilo",
   "survey.busy.loose.desc": "Mucho espacio para respirar.",
   "survey.week.title": "¿Para qué semana es este horario?",
+  "survey.weekStart.title": "¿Qué día empieza tu semana?",
+  "survey.weekStart.note": "Esto solo cambia el orden de las columnas al ver el horario.",
   "survey.week.of": "Semana del {date}",
   "survey.week.note":
     "Elige cualquier semana desde ahora hasta dentro de dos años. El horario mantiene el mismo patrón semanal — esto solo fecha los días al verlo.",
@@ -503,6 +507,8 @@ const FR: Dict = {
   "survey.busy.loose.label": "Léger",
   "survey.busy.loose.desc": "Beaucoup d’air.",
   "survey.week.title": "Pour quelle semaine est cet emploi du temps ?",
+  "survey.weekStart.title": "Quel jour commence ta semaine ?",
+  "survey.weekStart.note": "Cela change seulement l’ordre des colonnes quand tu regardes l’emploi du temps.",
   "survey.week.of": "Semaine du {date}",
   "survey.week.note":
     "Choisis n’importe quelle semaine d’ici deux ans. L’emploi du temps garde le même schéma hebdomadaire — ceci ne fait que dater les jours à l’affichage.",
@@ -684,6 +690,8 @@ const ZH: Dict = {
   "survey.busy.loose.label": "宽松",
   "survey.busy.loose.desc": "留足喘息空间。",
   "survey.week.title": "这个日程是哪一周的？",
+  "survey.weekStart.title": "你的一周从星期几开始？",
+  "survey.weekStart.note": "这只会改变查看日程时各列的顺序。",
   "survey.week.of": "{date} 那一周",
   "survey.week.note":
     "从现在到未来两年内任选一周。日程保持相同的每周模式——这只是查看时给每天标上日期。",
@@ -787,10 +795,6 @@ type I18n = {
   t: (key: string, vars?: Record<string, string | number>) => string;
   theme: Theme;
   toggleTheme: () => void;
-  // Which weekday the grid starts on (0 = Mon … 6 = Sun). Display only —
-  // stored schedules always keep index 0 = Monday.
-  weekStartDay: number;
-  setWeekStartDay: (d: number) => void;
 };
 
 const I18nContext = createContext<I18n | null>(null);
@@ -806,18 +810,11 @@ function applyTheme(theme: Theme) {
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
   const [theme, setTheme] = useState<Theme>("light");
-  const [weekStartDay, setWeekStartDayState] = useState(0); // Monday
 
   // Restore the saved language + theme on mount (after hydration).
   useEffect(() => {
     const saved = localStorage.getItem("sm_lang");
     if (isLang(saved)) setLangState(saved);
-    const savedWeekStart = parseInt(
-      localStorage.getItem("sm_week_start") ?? "",
-      10,
-    );
-    if (savedWeekStart >= 0 && savedWeekStart <= 6)
-      setWeekStartDayState(savedWeekStart);
     const savedTheme = localStorage.getItem("sm_theme");
     const initial: Theme =
       savedTheme === "dark" || savedTheme === "light"
@@ -852,15 +849,6 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const setWeekStartDay = useCallback((d: number) => {
-    setWeekStartDayState(d);
-    try {
-      localStorage.setItem("sm_week_start", String(d));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>) =>
       interpolate(STRINGS[lang][key] ?? EN[key] ?? key, vars),
@@ -876,8 +864,6 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
         t,
         theme,
         toggleTheme,
-        weekStartDay,
-        setWeekStartDay,
       }}
     >
       {children}
@@ -915,15 +901,43 @@ const WEEK_START_KEYS = [
   "day.sun",
 ];
 
-/** Pick which weekday the schedule grid starts on. */
-export function WeekStartSwitcher({ className = "" }: { className?: string }) {
-  const { weekStartDay, setWeekStartDay, t } = useI18n();
+/**
+ * The weekday this visitor's region starts its week on (0 = Mon … 6 = Sun).
+ * Uses the browser's own locale/calendar info, so a hand-built schedule
+ * starts on the right day without anyone being asked.
+ */
+export function autoWeekStartDay(): number {
+  try {
+    const loc = new Intl.Locale(navigator.language) as Intl.Locale & {
+      getWeekInfo?: () => { firstDay: number };
+      weekInfo?: { firstDay: number };
+    };
+    // firstDay is 1 = Monday … 7 = Sunday; our indices are 0 = Monday.
+    const first = loc.getWeekInfo?.().firstDay ?? loc.weekInfo?.firstDay;
+    if (first && first >= 1 && first <= 7) return first - 1;
+  } catch {
+    /* fall through */
+  }
+  return 0; // Monday
+}
+
+/** Pick which weekday a schedule's grid starts on. */
+export function WeekStartSwitcher({
+  value,
+  onChange,
+  className = "",
+}: {
+  value: number;
+  onChange: (d: number) => void;
+  className?: string;
+}) {
+  const { t } = useI18n();
   return (
     <select
       aria-label={t("weekStart.label")}
       title={t("weekStart.label")}
-      value={weekStartDay}
-      onChange={(e) => setWeekStartDay(Number(e.target.value))}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
       className={`h-8 rounded-lg border border-black/[.1] bg-transparent px-2 text-xs text-zinc-600 outline-none focus:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300 ${className}`}
     >
       {WEEK_START_KEYS.map((key, i) => (
