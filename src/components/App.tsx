@@ -5,7 +5,11 @@ import { SurveyWizard, type Answers } from "@/components/SurveyWizard";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Lobby } from "@/components/Lobby";
 import { Login } from "@/components/Login";
-import { generateWeek } from "@/lib/schedule";
+import {
+  anchorMondayFor,
+  generateWeek,
+  reanchorForStartDay,
+} from "@/lib/schedule";
 import { autoWeekStartDay } from "@/lib/i18n";
 import {
   createFolder,
@@ -23,16 +27,6 @@ import {
   type Folder,
   type SavedSchedule,
 } from "@/lib/storage";
-
-// ISO "YYYY-MM-DD" of the Monday on or before `date` — a blank schedule is
-// anchored to the current week so its columns get dates.
-function mondayOf(date: Date): string {
-  const d = new Date(date);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
 
 type View =
   | { name: "lobby" }
@@ -136,8 +130,22 @@ export function App() {
             initial: schedule.answers,
           })
         }
+        onWeekStartChange={(isoMonday) => {
+          const answers = { ...schedule.answers, weekStart: isoMonday };
+          setSchedules((list) =>
+            list.map((s) => (s.id === schedule.id ? { ...s, answers } : s)),
+          );
+          updateSchedule(schedule.id, { answers }).catch(() => {});
+        }}
         onWeekStartDayChange={(d) => {
-          const answers = { ...schedule.answers, weekStartDay: d };
+          const from = schedule.answers.weekStartDay ?? 0;
+          const answers = {
+            ...schedule.answers,
+            weekStartDay: d,
+            weekStart: schedule.answers.weekStart
+              ? reanchorForStartDay(schedule.answers.weekStart, from, d)
+              : anchorMondayFor(d),
+          };
           setSchedules((list) =>
             list.map((s) => (s.id === schedule.id ? { ...s, answers } : s)),
           );
@@ -167,15 +175,17 @@ export function App() {
       onNew={() => setView({ name: "survey", editingId: null, initial: null })}
       onNewBlank={async () => {
         // Blank week, built by hand — ScheduleManager generates nothing.
+        // The site picks the start day from this visitor's region, then
+        // anchors the week so today is one of the columns on screen.
+        const weekStartDay = autoWeekStartDay();
         const created = await createSchedule({
           fixedTime: [],
           flexible: [],
           wants: [],
           busyness: null,
           manual: true,
-          weekStart: mondayOf(new Date()),
-          // The site picks the start day from this visitor's region.
-          weekStartDay: autoWeekStartDay(),
+          weekStart: anchorMondayFor(weekStartDay),
+          weekStartDay,
         });
         setSchedules((list) => [created, ...list]);
         setView({ name: "schedule", id: created.id });

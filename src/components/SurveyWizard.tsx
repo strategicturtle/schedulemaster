@@ -2,6 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { LanguageSwitcher, useI18n } from "@/lib/i18n";
+import {
+  anchorMondayFor,
+  displayWeekStart,
+  isoDate,
+  reanchorForStartDay,
+} from "@/lib/schedule";
 
 type Busyness = "middle" | "packed" | "loose";
 
@@ -144,31 +150,16 @@ const DAY_START_KEYS = [
 
 const WEEKS_AHEAD = 104; // ~2 years of weeks to choose from
 
-// ISO date string ("YYYY-MM-DD") for a Date, using local calendar fields.
-function isoDate(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
-// The Monday on or before the given date.
-function mondayOf(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const back = (d.getDay() + 6) % 7; // Sun=0 -> 6, Mon=1 -> 0, ...
-  d.setDate(d.getDate() - back);
-  return d;
-}
-
 // All selectable weeks: this week's Monday through ~2 years out. Labels are
 // formatted at render time so they follow the active language/locale.
-function buildWeekOptions(): { value: string; date: Date }[] {
-  const start = mondayOf(new Date());
+function buildWeekOptions(weekStartDay: number): { value: string; date: Date }[] {
+  const base = anchorMondayFor(weekStartDay);
   const out: { value: string; date: Date }[] = [];
   for (let i = 0; i <= WEEKS_AHEAD; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i * 7);
-    out.push({ value: isoDate(d), date: d });
+    const d = new Date(`${base}T00:00:00`);
+    d.setDate(d.getDate() + i * 7);
+    const value = isoDate(d);
+    out.push({ value, date: displayWeekStart(value, weekStartDay) });
   }
   return out;
 }
@@ -183,8 +174,8 @@ function initAnswers(): Answers {
     flexible: [emptyEntry(BLANK_STEPS[1].fields)],
     wants: [emptyEntry(BLANK_STEPS[2].fields)],
     busyness: null,
-    weekStart: isoDate(mondayOf(new Date())),
     weekStartDay: 0,
+    weekStart: anchorMondayFor(0),
     routineSubjects: [],
     routinesPerDay: "",
     school: { enabled: false, startH: "", startM: "", endH: "", endM: "" },
@@ -220,20 +211,22 @@ export function SurveyWizard({
     // Backfill weekStart for schedules created before this question existed.
     return {
       ...initialAnswers,
-      weekStart: initialAnswers.weekStart || isoDate(mondayOf(new Date())),
+      weekStart:
+        initialAnswers.weekStart ||
+        anchorMondayFor(initialAnswers.weekStartDay ?? 0),
     };
   });
   const weekOptions = useMemo(() => {
-    const opts = buildWeekOptions();
+    const opts = buildWeekOptions(answers.weekStartDay ?? 0);
     // Keep a previously-chosen past week selectable when editing an old one.
     if (answers.weekStart && !opts.some((o) => o.value === answers.weekStart)) {
       opts.unshift({
         value: answers.weekStart,
-        date: new Date(`${answers.weekStart}T00:00:00`),
+        date: displayWeekStart(answers.weekStart, answers.weekStartDay ?? 0),
       });
     }
     return opts;
-  }, [answers.weekStart]);
+  }, [answers.weekStart, answers.weekStartDay]);
 
   const goNext = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
@@ -740,12 +733,21 @@ export function SurveyWizard({
           </h2>
           <select
             value={answers.weekStartDay ?? 0}
-            onChange={(e) =>
-              setAnswers((a) => ({
-                ...a,
-                weekStartDay: Number(e.target.value),
-              }))
-            }
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setAnswers((a) => {
+                const from = a.weekStartDay ?? 0;
+                return {
+                  ...a,
+                  weekStartDay: next,
+                  weekStart: reanchorForStartDay(
+                    a.weekStart ?? anchorMondayFor(from),
+                    from,
+                    next,
+                  ),
+                };
+              });
+            }}
             aria-label={t("survey.weekStart.title")}
             className="h-12 w-full rounded-xl border border-black/[.1] bg-white px-3 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/[.15] dark:bg-zinc-900 dark:focus:border-indigo-400"
           >

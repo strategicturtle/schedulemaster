@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DAY_LABELS,
+  anchorMondayFor,
+  firstDayOffset,
+  displayWeekStart,
   formatTime,
+  isoDate,
   weekBounds,
   type Block,
   type Week,
@@ -43,13 +47,10 @@ const MEAL_TITLES = new Set([
 // Day offsets are measured from the schedule's anchor Monday. When the week
 // is shown starting on a later day (e.g. Sunday), that first column is the
 // day *before* the anchor Monday, so the whole range shifts back.
-const firstOffset = (weekStartDay: number) =>
-  weekStartDay === 0 ? 0 : weekStartDay - 7;
-
 // Days from the anchor Monday for day index d (0 = Mon … 6 = Sun).
 function dayOffset(d: number, weekStartDay: number): number {
   const position = (d - weekStartDay + 7) % 7;
-  return firstOffset(weekStartDay) + position;
+  return firstDayOffset(weekStartDay) + position;
 }
 
 // Short M/D labels per day index (0 = Mon … 6 = Sun), or [] if no week set.
@@ -72,9 +73,35 @@ function todayIndex(weekStart: string | undefined, weekStartDay: number): number
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diff = Math.round((today.getTime() - base.getTime()) / 86400000);
-  const lo = firstOffset(weekStartDay);
+  const lo = firstDayOffset(weekStartDay);
   if (diff < lo || diff > lo + 6) return -1;
   return (weekStartDay + (diff - lo)) % 7;
+}
+
+// Weeks a hand-built schedule can be moved to: a year back through a year
+// ahead, so past weeks stay reachable as well as future ones. Values are
+// anchor Mondays; labels use the date the week actually starts on screen.
+const WEEKS_BACK = 52;
+const WEEKS_AHEAD = 52;
+function buildWeekOptions(
+  weekStartDay: number,
+  current?: string,
+): { value: string; date: Date }[] {
+  const base = anchorMondayFor(weekStartDay);
+  const out: { value: string; date: Date }[] = [];
+  for (let i = -WEEKS_BACK; i <= WEEKS_AHEAD; i++) {
+    const d = new Date(`${base}T00:00:00`);
+    d.setDate(d.getDate() + i * 7);
+    const value = isoDate(d);
+    out.push({ value, date: displayWeekStart(value, weekStartDay) });
+  }
+  if (current && !out.some((o) => o.value === current)) {
+    out.unshift({
+      value: current,
+      date: displayWeekStart(current, weekStartDay),
+    });
+  }
+  return out;
 }
 
 const snap = (min: number) => Math.round(min / SNAP) * SNAP;
@@ -110,6 +137,7 @@ export function ScheduleGrid({
   onEdit,
   onChange,
   onWeekStartDayChange,
+  onWeekStartChange,
 }: {
   week: Week;
   title?: string;
@@ -123,8 +151,10 @@ export function ScheduleGrid({
   onChange: (week: Week) => void;
   /** Change this schedule's start day (manual schedules have no survey). */
   onWeekStartDayChange?: (d: number) => void;
+  /** Change which week a hand-built schedule is for. */
+  onWeekStartChange?: (isoMonday: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const displayTitle = title ?? t("grid.defaultTitle");
   const dayDates = weekDates(weekStart, weekStartDay);
   const today = todayIndex(weekStart, weekStartDay);
@@ -148,6 +178,20 @@ export function ScheduleGrid({
     [weekStartDay],
   );
   const visibleDays = view === "day" ? [dayIndex] : weekOrder;
+
+  const weekOptions = useMemo(
+    () => buildWeekOptions(weekStartDay, weekStart),
+    [weekStartDay, weekStart],
+  );
+  const weekLabelFmt = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    [locale],
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
@@ -196,11 +240,40 @@ export function ScheduleGrid({
     commit(latest.current.week.map((d) => d.filter((b) => b.id !== id)));
     setSelectedId(null);
   };
+  // Next free id for a user-added block. Derived from the week itself so it
+  // can't collide with an existing block (two created in the same
+  // millisecond used to be able to).
+  const nextBlockId = () => {
+    let n = 0;
+    for (const day of latest.current.week)
+      for (const b of day)
+        if (b.id.startsWith("u")) n = Math.max(n, Number(b.id.slice(1)) || 0);
+    return `u${n + 1}`;
+  };
+
+  // Copy a block, dropping the copy right after it (or just below if that
+  // would run past the end of the day).
+  const duplicateBlock = (id: string) => {
+    const w = latest.current.week;
+    const day = w.findIndex((d) => d.some((b) => b.id === id));
+    if (day < 0) return;
+    const block = w[day].find((b) => b.id === id)!;
+    const len = block.endMin - block.startMin;
+    const startMin = clamp(block.endMin, latest.current.start, latest.current.end - len);
+    const copy: Block = { ...block, id: nextBlockId(), startMin, endMin: startMin + len };
+    commit(
+      w.map((d, i) =>
+        i === day ? [...d, copy].sort((a, b) => a.startMin - b.startMin) : d,
+      ),
+    );
+    setSelectedId(copy.id);
+  };
+
   const addBlock = (day: number, startMin: number) => {
     const w = latest.current.week;
     const s = clamp(snap(startMin), latest.current.start, latest.current.end - 30);
     const e = Math.min(s + 60, latest.current.end);
-    const id = `u${Date.now()}`;
+    const id = nextBlockId();
     const next: Block = { id, title: t("block.new"), startMin: s, endMin: e, kind: "want" };
     commit(
       w.map((d, i) => (i === day ? [...d, next].sort((a, b) => a.startMin - b.startMin) : d)),
@@ -436,7 +509,23 @@ export function ScheduleGrid({
               {t("grid.day")}
             </button>
           </div>
-          {/* Manual schedules have no survey, so the start day is set here. */}
+          {/* Manual schedules have no survey, so the week and start day are
+              set here instead. */}
+          {manual && onWeekStartChange && (
+            <select
+              aria-label={t("survey.week.title")}
+              title={t("survey.week.title")}
+              value={weekStart ?? ""}
+              onChange={(e) => onWeekStartChange(e.target.value)}
+              className="h-8 rounded-lg border border-black/[.1] bg-transparent px-2 text-xs text-zinc-600 outline-none focus:border-zinc-400 dark:border-white/[.15] dark:text-zinc-300"
+            >
+              {weekOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {t("survey.week.of", { date: weekLabelFmt.format(o.date) })}
+                </option>
+              ))}
+            </select>
+          )}
           {manual && onWeekStartDayChange && (
             <WeekStartSwitcher
               value={weekStartDay}
@@ -535,9 +624,24 @@ export function ScheduleGrid({
                     : "text-indigo-600 dark:text-indigo-300"
                 }`}
               >
-                <span>{t(DAY_KEYS[di])}</span>
+                {/* Today gets a filled chip so it reads at a glance. */}
+                <span
+                  className={
+                    di === today
+                      ? "rounded-full bg-indigo-600 px-2 py-0.5 text-white dark:bg-indigo-500"
+                      : ""
+                  }
+                >
+                  {t(DAY_KEYS[di])}
+                </span>
                 {dayDates[di] && (
-                  <span className="text-[10px] font-normal text-zinc-400 tabular-nums">
+                  <span
+                    className={`text-[10px] tabular-nums ${
+                      di === today
+                        ? "font-semibold text-indigo-600 dark:text-indigo-300"
+                        : "font-normal text-zinc-400"
+                    }`}
+                  >
                     {dayDates[di]}
                   </span>
                 )}
@@ -567,7 +671,9 @@ export function ScheduleGrid({
                   addBlock(di, dayTimeFromEvent(e, e.currentTarget));
                 }}
                 className={`relative border-l border-black/[.06] dark:border-white/[.08] ${
-                  di === today ? "bg-indigo-50/40 dark:bg-indigo-500/5" : ""
+                  di === today
+                    ? "bg-indigo-50/80 dark:bg-indigo-500/10"
+                    : ""
                 }`}
                 style={{ height }}
               >
@@ -663,6 +769,15 @@ export function ScheduleGrid({
             className={`h-9 rounded-lg px-3 text-sm font-medium ${selected.done ? "btn-primary" : "border border-black/[.1] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"}`}
           >
             ✓ {t("grid.done")}
+          </button>
+          <button
+            type="button"
+            onClick={() => duplicateBlock(selected.id)}
+            aria-label={t("grid.duplicateBlock")}
+            title={t("grid.duplicateBlock")}
+            className="h-9 rounded-lg px-3 text-sm text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300"
+          >
+            ⧉
           </button>
           <button
             type="button"

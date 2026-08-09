@@ -65,6 +65,66 @@ export type SurveyAnswers = {
 
 export const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// ---- Week anchoring -------------------------------------------------------
+// A week is stored against its Monday (day index 0) but displayed as a 7-day
+// window starting on `weekStartDay`. For any start day after Monday that
+// window begins the week *before* the anchor Monday.
+
+export const firstDayOffset = (weekStartDay: number) =>
+  weekStartDay === 0 ? 0 : weekStartDay - 7;
+
+export function isoDate(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** First date actually shown on the grid for an anchor Monday. */
+export function displayWeekStart(anchorIso: string, weekStartDay: number): Date {
+  const d = new Date(`${anchorIso}T00:00:00`);
+  d.setDate(d.getDate() + firstDayOffset(weekStartDay));
+  return d;
+}
+
+/**
+ * The anchor Monday whose displayed window contains `date`. Anchoring naively
+ * to the date's own Monday can push it out of view (e.g. a Sunday-start week
+ * viewed on a Sunday).
+ */
+export function anchorMondayFor(
+  weekStartDay: number,
+  date: Date = new Date(),
+): string {
+  const jsStartDay = (weekStartDay + 1) % 7; // our 0 = Mon -> JS 0 = Sun
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() - jsStartDay + 7) % 7));
+  start.setDate(start.getDate() - firstDayOffset(weekStartDay));
+  return isoDate(start);
+}
+
+/**
+ * Re-anchor a week when the start day changes, so the same days stay on
+ * screen. If today is currently visible it stays visible (changing the start
+ * day shouldn't scroll you off the current week); otherwise the window keeps
+ * covering the same stretch of dates.
+ */
+export function reanchorForStartDay(
+  weekStart: string,
+  fromStartDay: number,
+  toStartDay: number,
+  today: Date = new Date(),
+): string {
+  const start = displayWeekStart(weekStart, fromStartDay);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const t = new Date(today);
+  t.setHours(0, 0, 0, 0);
+  const ref = t >= start && t <= end ? t : new Date(start.getTime());
+  if (ref !== t) ref.setDate(ref.getDate() + 3); // mid-week
+  return anchorMondayFor(toStartDay, ref);
+}
+
 const DAY_ALIASES: Record<string, number> = {
   mon: 0, monday: 0,
   tue: 1, tues: 1, tuesday: 1,
